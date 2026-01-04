@@ -1,0 +1,4 @@
+[submodule "hoppet/hoppet"]
+	path = hoppet/hoppet
+	url = https://github.com/hoppet-code/hoppet
+	branch = tags/hoppet-2.1.4
