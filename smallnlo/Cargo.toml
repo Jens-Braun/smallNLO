@@ -7,3 +7,5 @@ edition = "2024"
 ndarray = { version = "0.17", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
+hoppet = {version = "0.1", path = "../hoppet", features = ["lhapdf", "tracing"]}
+tracing = "0.1"

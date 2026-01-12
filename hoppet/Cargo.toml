@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
+[dependencies]
+lhapdf = { package = "managed-lhapdf", git = "https://github.com/Jens-Braun/managed-lhapdf", optional = true , default-features = false }
+tracing = { version = "0.1", optional = true }
+
+[features]
+lhapdf = ["dep:lhapdf"]
+tracing = ["dep:tracing"]
+
 [build-dependencies]
 cmake = "0.1"
 

@@ -4,7 +4,10 @@ pub use config::{FactorizationScheme, FlavorScheme};
 pub use error::HoppetError;
 use std::{
     slice,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 
 use config::{BaseConfig, PDFConfig, QCDConfig, QEDConfig};
@@ -12,15 +15,18 @@ use config::{BaseConfig, PDFConfig, QCDConfig, QEDConfig};
 mod config;
 mod error;
 mod ffi;
+#[cfg(feature = "lhapdf")]
+mod lhapdf;
 
 static HOPPET_LOCK: AtomicBool = AtomicBool::new(false);
-static mut XFX: Option<fn(f64, f64, &mut [f64; 13])> = None;
+static HOPPET_COUNTER: AtomicUsize = AtomicUsize::new(0);
+static mut XFX: Option<Box<Arc<dyn Fn(f64, f64, &mut [f64; 13]) + Send + Sync>>> = None;
 
 extern "C" fn xfx_wrap(x: *const f64, Q: *const f64, res: *mut f64) {
     unsafe {
         match XFX {
             None => unreachable!(),
-            Some(xfx) => xfx(
+            Some(ref xfx) => xfx(
                 *x,
                 *Q,
                 slice::from_raw_parts_mut(res, 13).try_into().unwrap(),
@@ -76,6 +82,12 @@ impl HoppetConfig {
         return self;
     }
 
+    pub fn y_lnlnQ_orders(&mut self, yorder: i32, lnlnQorder: i32) -> &mut Self {
+        self.base.yorder = yorder;
+        self.base.lnlnQorder = lnlnQorder;
+        return self;
+    }
+
     pub fn flavor_scheme(&mut self, scheme: FlavorScheme) -> &mut Self {
         if let FlavorScheme::Fixed { nf } = scheme {
             self.base.split_nf = nf;
@@ -98,8 +110,13 @@ impl HoppetConfig {
         return self;
     }
 
-    pub fn assign(&mut self, xfx: fn(f64, f64, &mut [f64; 13])) -> &mut Self {
-        self.pdf = Some(PDFConfig::Assign { xfx });
+    pub fn assign(
+        &mut self,
+        xfx: impl Fn(f64, f64, &mut [f64; 13]) + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.pdf = Some(PDFConfig::Assign {
+            xfx: Box::new(Arc::new(xfx)),
+        });
         return self;
     }
 
@@ -109,7 +126,7 @@ impl HoppetConfig {
         Q0alphas: f64,
         nloop: i32,
         muR_Q: f64,
-        xfx: fn(f64, f64, &mut [f64; 13]),
+        xfx: impl Fn(f64, f64, &mut [f64; 13]) + Send + Sync + 'static,
         Q0pdf: f64,
     ) -> &mut Self {
         self.qcd = Some(QCDConfig {
@@ -118,7 +135,7 @@ impl HoppetConfig {
             nloop,
         });
         self.pdf = Some(PDFConfig::Evolve {
-            xfx,
+            xfx: Box::new(Arc::new(xfx)),
             muR: muR_Q,
             Q0: Q0pdf,
         });
@@ -134,6 +151,7 @@ impl HoppetConfig {
         return self;
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, level = tracing::Level::DEBUG))]
     pub fn init(&mut self) -> Result<Hoppet, HoppetError> {
         if HOPPET_LOCK.load(Ordering::Relaxed) {
             return Err(HoppetError::AlreadyInitialized);
@@ -141,8 +159,16 @@ impl HoppetConfig {
         HOPPET_LOCK.store(true, Ordering::Relaxed);
         unsafe {
             if let Some(ref qed) = self.qed {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(
+                    "Enabling QED {} mixed QCD-QED terms and {} Pˡ𐞥 splitting functions",
+                    if qed.qcd_qed { "with" } else { "without" },
+                    if qed.plq { "with" } else { "without" },
+                );
                 ffi::hoppetSetQED_c(&qed.with_qed, &qed.qcd_qed, &qed.plq);
             }
+            #[cfg(feature = "tracing")]
+            tracing::debug!("Using flavor scheme {:?}", self.base.flavor_scheme);
             match self.base.flavor_scheme {
                 FlavorScheme::Fixed { nf } => ffi::hoppetsetffn_(&nf),
                 FlavorScheme::PoleMassVFN { mc, mb, mt } => {
@@ -150,6 +176,25 @@ impl HoppetConfig {
                 }
                 FlavorScheme::MSbarVFN { mc, mb, mt } => ffi::hoppetsetmsbarmassvfn_(&mc, &mb, &mt),
             }
+            #[cfg(feature = "tracing")]
+            tracing::debug!(
+                "Using interpolation order {} for y and {} for lnlnQ",
+                self.base.yorder,
+                self.base.lnlnQorder
+            );
+            ffi::hoppetsetylnlnqinterporders_(&self.base.yorder, &self.base.lnlnQorder);
+            #[cfg(feature = "tracing")]
+            tracing::debug!(
+                ymax = &self.base.ymax,
+                dy = &self.base.dy,
+                Qmin = &self.base.Qmin,
+                Qmax = &self.base.Qmax,
+                dlnlnQ = &self.base.dlnlnQ,
+                nloop = &self.base.nloop,
+                interpolation_order = &self.base.interpolation_order,
+                factorization_scheme = ?&self.base.factorization_scheme,
+                "Starting Hoppet"
+            );
             ffi::hoppetstartextended_(
                 &self.base.ymax,
                 &self.base.dy,
@@ -164,18 +209,18 @@ impl HoppetConfig {
                 (None, None) => (),
                 (None, Some(PDFConfig::Evolve { .. })) => unreachable!(),
                 (None, Some(PDFConfig::Assign { xfx })) => {
-                    XFX = Some(*xfx);
+                    XFX = Some(xfx.clone());
                     ffi::hoppetassign_(xfx_wrap)
                 }
                 (
                     Some(QCDConfig { alphas_Q, Q, nloop }),
                     Some(PDFConfig::Evolve { xfx, muR, Q0 }),
                 ) => {
-                    XFX = Some(*xfx);
+                    XFX = Some(xfx.clone());
                     ffi::hoppetevolve_(alphas_Q, Q, nloop, muR, xfx_wrap, Q0);
                 }
                 (Some(QCDConfig { alphas_Q, Q, nloop }), Some(PDFConfig::Assign { xfx })) => {
-                    XFX = Some(*xfx);
+                    XFX = Some(xfx.clone());
                     ffi::hoppetsetcoupling_(alphas_Q, Q, nloop);
                     ffi::hoppetassign_(xfx_wrap);
                 }
@@ -184,21 +229,14 @@ impl HoppetConfig {
                 }
             }
         }
-        return Ok(Hoppet {
-            conf: self.clone(),
-            //_phantom_unsync: std::marker::PhantomData,
-            //_phantom_unsend: std::marker::PhantomData,
-        });
+        HOPPET_COUNTER.fetch_add(1, Ordering::Relaxed);
+        return Ok(Hoppet { conf: self.clone() });
     }
 }
 
 #[derive(Debug)]
 pub struct Hoppet {
     conf: HoppetConfig,
-    // The underlying Fortran library is not thread safe, therefore this type is not allowed to be Sync or Send. The
-    // following phantom markers enforce this
-    //_phantom_unsync: std::marker::PhantomData<std::cell::Cell<()>>,
-    //_phantom_unsend: std::marker::PhantomData<std::sync::MutexGuard<'static, ()>>,
 }
 
 impl Hoppet {
@@ -243,11 +281,25 @@ impl Hoppet {
 
 impl Drop for Hoppet {
     fn drop(&mut self) {
-        unsafe {
-            ffi::hoppetdeleteall_();
-            XFX = None;
+        if HOPPET_COUNTER.load(Ordering::Relaxed) == 1 {
+            unsafe {
+                ffi::hoppetdeleteall_();
+                XFX = None;
+            }
+            HOPPET_LOCK.store(false, Ordering::Relaxed);
+            HOPPET_COUNTER.store(0, Ordering::Relaxed);
+        } else {
+            HOPPET_COUNTER.fetch_sub(1, Ordering::Relaxed);
         }
-        HOPPET_LOCK.store(false, Ordering::Relaxed);
+    }
+}
+
+impl Clone for Hoppet {
+    fn clone(&self) -> Self {
+        HOPPET_COUNTER.fetch_add(1, Ordering::Relaxed);
+        return Self {
+            conf: self.conf.clone(),
+        };
     }
 }
 
@@ -287,6 +339,7 @@ mod tests {
             Ok(_) => panic!("Acquired second Hoppet handle"),
             Err(e) => match e {
                 HoppetError::AlreadyInitialized => (),
+                _ => unreachable!(),
             },
         }
         drop(hop);
@@ -294,6 +347,7 @@ mod tests {
             Ok(_) => (),
             Err(e) => match e {
                 HoppetError::AlreadyInitialized => panic!("Hoppet lock not correctly dropped"),
+                _ => unreachable!(),
             },
         }
     }
@@ -319,5 +373,17 @@ mod tests {
             .unwrap();
         let mut buf = [0.; 13];
         hop.eval(0.5, 40., &mut buf);
+    }
+
+    #[test]
+    fn drop_test() {
+        let hp = HoppetConfig::new()
+            .set_coupling(0.118001, 91.1876, 2)
+            .init()
+            .unwrap();
+        println!("{}", hp.alphaS(40.));
+        let hp2 = hp.clone();
+        drop(hp2);
+        println!("{}", hp.alphaS(40.));
     }
 }

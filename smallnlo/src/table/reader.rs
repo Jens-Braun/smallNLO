@@ -11,6 +11,11 @@ const SEP: &str = "1234567890";
 
 pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
     let content = std::fs::read_to_string(file)?;
+    return read_fastnlo_str(&content);
+}
+
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
+pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> {
     let mut line_iter = content.lines();
     let lines = &mut line_iter;
 
@@ -44,6 +49,10 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
     let description = take_multiple::<String>(lines, None)?;
     let cms_energy = take::<Float>(lines)?;
     let alphas_ord = take::<usize>(lines)?;
+    tracing::info!(
+        "Successfully read metadata of FastNLO table (v{table_version}) for scenario `{scenario_name}` containing `{}` blocks",
+        n_data + n_contrib
+    );
     let metadata = Metadata {
         table_version,
         scenario_name,
@@ -56,6 +65,7 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
         cms_energy,
         alphas_ord,
     };
+    tracing::debug!(?metadata, "Successfully read table metadata");
 
     let n_bins = take::<usize>(lines)?;
     let n_dim = take::<usize>(lines)?;
@@ -84,6 +94,10 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
         .zip(bin_sizes.into_iter())
         .map(|(values, size)| Bin { values, size })
         .collect::<Vec<_>>();
+    tracing::info!(
+        "Successfully read {n_dim}-dimensional binning with {n_bins} bins per dimension"
+    );
+    tracing::debug!(?bins, "Successfully read binning");
 
     let norm_flag = take::<isize>(lines)?;
     let mut _denom_table = None;
@@ -99,7 +113,7 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
 
     // -------------------- DATA BLOCKS --------------------
     let mut blocks = Vec::with_capacity(n_contrib + n_data);
-    for _ in 0..(n_contrib + n_data) {
+    for b in 0..(n_contrib + n_data) {
         assert_eq!(*lines.next().unwrap(), *SEP);
         let unit = take::<usize>(lines)?;
         let data_block = take::<usize>(lines)? == 1;
@@ -111,10 +125,15 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
         let code_description = take_multiple::<String>(lines, None)?;
 
         let data = if data_block {
+            tracing::info!("Reading data of block {b} (data block): \n        {description:?}");
             read_data_block(lines.by_ref(), n_bins)?
         } else if mult_block {
+            tracing::info!(
+                "Reading data of block {b} (multiplicative contribution block): \n        {description:?}"
+            );
             read_mult_block(lines.by_ref(), n_bins)?
         } else {
+            tracing::info!("Reading data of block {b} (theory block): \n        {description:?}");
             read_theory_block(lines.by_ref(), n_bins, scale_format)?
         };
         let mut coeff_info_flags_1;
@@ -158,7 +177,7 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
 
     assert_eq!(*lines.next().unwrap(), *SEP);
     assert_eq!(*lines.next().unwrap(), *SEP);
-
+    tracing::info!("Successfully read FastNLO table");
     return Ok(FastNLOFile {
         metadata,
         bins,
@@ -167,6 +186,7 @@ pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_data_block<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     n_bins: usize,
@@ -211,6 +231,7 @@ fn read_data_block<'a>(
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_mult_block<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     n_bins: usize,
@@ -251,6 +272,7 @@ fn read_mult_block<'a>(
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_theory_block<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     n_bins: usize,
@@ -288,6 +310,9 @@ fn read_theory_block<'a>(
             sig_obs,
             n_events_obs,
         });
+        tracing::info!(
+            "Found full weight info with normalization `{norm}` and {n_entries} entries"
+        );
     } else {
         weight_info = None;
     }
@@ -303,11 +328,21 @@ fn read_theory_block<'a>(
         todo!();
     }
     let x1_nodes = take_nested_vec::<Float>(lines, Some(n_bins))?;
+    tracing::info!(
+        "Found x₁ grid with {} nodes for the first bin",
+        x1_nodes[0].len()
+    );
     let x2_nodes = if pdf_info.n_pdf_dim == 2 {
         take_nested_vec::<Float>(lines, Some(n_bins))?
     } else {
         Vec::new()
     };
+    if !x2_nodes.is_empty() {
+        tracing::info!(
+            "Found x₂ grid with {} nodes for the second bin",
+            x2_nodes[0].len()
+        );
+    }
     let z_nodes = if pdf_info.n_ff_dim > 0 {
         take_nested_vec::<Float>(lines, Some(n_bins))?
     } else {
@@ -350,6 +385,7 @@ fn read_theory_block<'a>(
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_pdf_info<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<PDFInfo, ReadError> {
     let pdfs = take_multiple::<usize>(lines, None)?;
     let n_pdf_dim = take::<usize>(lines)?;
@@ -378,6 +414,11 @@ fn read_pdf_info<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<PDFInf
     } else {
         parton_flavors = Vec::new();
     }
+    tracing::info!(
+        "Found PDF info for {} PDFs containing {} subprocesses",
+        pdfs.len(),
+        n_subproc
+    );
     return Ok(PDFInfo {
         pdfs,
         n_pdf_dim,
@@ -392,6 +433,7 @@ fn read_pdf_info<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<PDFInf
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_grid<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     norm: Float,
@@ -404,6 +446,7 @@ fn read_grid<'a>(
     x2_nodes: &Vec<Vec<Float>>,
 ) -> Result<Grid, ReadError> {
     if scale_dependence == 0 {
+        tracing::info!("Reading fixed-type grid");
         let mut n_scale_var = Vec::with_capacity(n_scale_dim);
         let mut n_scale_node = Vec::with_capacity(n_scale_dim);
         for _ in 0..n_scale_dim {
@@ -457,6 +500,11 @@ fn read_grid<'a>(
                 }
             }
         }
+        tracing::info!(
+            "Successfully read grid of dimension `{:?}` containing {} entries",
+            grid.raw_dim(),
+            grid.len()
+        );
         return Ok(Grid::Fixed {
             n_scale_var,
             n_scale_node,
@@ -465,6 +513,17 @@ fn read_grid<'a>(
             grid,
         });
     } else if scale_dependence >= 3 {
+        match scale_dependence {
+            4 => tracing::info!("Reading flex-type grid with contributions `[Finite]` (LO)"),
+            5 => tracing::info!("Reading flex-type grid with contributions `[Finite, R, F]` (NLO)"),
+            6 => tracing::info!(
+                "Reading flex-type grid with contributions `[Finite, R, F, RR]` (NNLO)"
+            ),
+            7 => tracing::info!(
+                "Reading flex-type grid with contributions `[Finite, R, F, RR, FF, RF]` (NNLO)"
+            ),
+            _ => unreachable!(),
+        }
         let _n_bins = take::<usize>(lines)?;
         let n_scale_node_1 = take::<usize>(lines)?;
         let mut scale_node_1 = Array2::zeros((n_bins, n_scale_node_1));
@@ -547,6 +606,18 @@ fn read_grid<'a>(
         let _n_bins = take::<usize>(lines)?;
         let sigma_ref_s2 =
             Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
+        tracing::info!(
+            "Successfully read {} grids of dimensions `{:?}` containing {} entries each",
+            match scale_dependence {
+                4 => 1,
+                5 => 3,
+                6 => 4,
+                7 => 6,
+                _ => unreachable!(),
+            },
+            grid.raw_dim(),
+            grid.len()
+        );
         return Ok(Grid::Flex {
             scale_node_1,
             scale_node_2,
@@ -566,6 +637,7 @@ fn read_grid<'a>(
 }
 
 #[inline]
+#[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn fill_grid<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     mut grid: ArrayViewMut5<Float>,

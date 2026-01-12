@@ -10,14 +10,18 @@ mod reader;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FastNLOFile {
-    metadata: Metadata,
-    bins: Vec<Bin>,
-    blocks: Vec<Block>,
+    pub metadata: Metadata,
+    pub bins: Vec<Bin>,
+    pub blocks: Vec<Block>,
 }
 
 impl FastNLOFile {
     pub fn read(file: PathBuf) -> Result<Self, ReadError> {
         return reader::read_fastnlo(file);
+    }
+
+    pub fn read_str(content: &str) -> Result<Self, ReadError> {
+        return reader::read_fastnlo_str(content);
     }
 
     pub fn strip(&mut self) {
@@ -29,22 +33,22 @@ impl FastNLOFile {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Metadata {
-    table_version: usize,     // ltabversion
-    scenario_name: String,    // ScenName
-    n_contrib: usize,         // NContrib
-    n_mult: usize,            // Nmult
-    n_data: usize,            // Ndata
-    n_user: usize,            // NUserBlocks
-    unit: usize,              // lpublunits
-    description: Vec<String>, // ScDescript
-    cms_energy: Float,        // Ecms
-    alphas_ord: usize,        // ILOord
+    pub table_version: usize,     // ltabversion
+    pub scenario_name: String,    // ScenName
+    pub n_contrib: usize,         // NContrib
+    pub n_mult: usize,            // Nmult
+    pub n_data: usize,            // Ndata
+    pub n_user: usize,            // NUserBlocks
+    pub unit: usize,              // lpublunits
+    pub description: Vec<String>, // ScDescript
+    pub cms_energy: Float,        // Ecms
+    pub alphas_ord: usize,        // ILOord
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Bin {
-    values: Vec<BinInfo>,
-    size: Float, // BinSize
+    pub values: Vec<BinInfo>,
+    pub size: Float, // BinSize
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -55,23 +59,23 @@ pub enum BinInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Block {
-    unit: usize,                   // IXsectUnits
-    data_block: bool,              // IDataFlag
-    mult_block: bool,              // IAddMultFlag
-    contribution_type: usize,      // IContrFlag1
-    contribution_order: usize,     // IContrFlag2
-    scale_format: usize,           // NscaleDep
-    description: Vec<String>,      // CtrbDescript
-    code_description: Vec<String>, // CodeDescript
-    data: BlockData,
-    coeff_info_flags_1: Vec<usize>,            // ICoeffInfoBlockFlag1
-    coeff_info_flags_2: Vec<usize>,            // ICoeffInfoBlockFlag2
-    coeff_block_description: Vec<Vec<String>>, // CoeffInfoBlockDescript
-    coeff_block_content: Vec<Vec<Float>>,      // CoeffInfoBlockContent
+    pub unit: usize,                   // IXsectUnits
+    pub data_block: bool,              // IDataFlag
+    pub mult_block: bool,              // IAddMultFlag
+    pub contribution_type: usize,      // IContrFlag1
+    pub contribution_order: usize,     // IContrFlag2
+    pub scale_format: usize,           // NscaleDep
+    pub description: Vec<String>,      // CtrbDescript
+    pub code_description: Vec<String>, // CodeDescript
+    pub data: BlockData,
+    pub coeff_info_flags_1: Vec<usize>, // ICoeffInfoBlockFlag1
+    pub coeff_info_flags_2: Vec<usize>, // ICoeffInfoBlockFlag2
+    pub coeff_block_description: Vec<Vec<String>>, // CoeffInfoBlockDescript
+    pub coeff_block_content: Vec<Vec<Float>>, // CoeffInfoBlockContent
 }
 
 impl Block {
-    pub(crate) fn strip(&mut self) {
+    pub fn strip(&mut self) {
         match self.data {
             BlockData::TheoryBlock { ref mut grid, .. } => match *grid {
                 Grid::Flex {
@@ -127,7 +131,7 @@ pub enum BlockData {
         pdf_info: PDFInfo,
         //n_events_bins: Vec<Vec<usize>>,      // NEvtBinProc
         x1_nodes: Vec<Vec<Float>>,           // XNode1
-        x2_nodes: Vec<Vec<Float>>,           // XNode 2
+        x2_nodes: Vec<Vec<Float>>,           // XNode2
         z_nodes: Vec<Vec<Float>>,            // Znode
         scale_dimension: Vec<usize>,         // Iscale
         scale_description: Vec<Vec<String>>, // ScaleDescript
@@ -137,29 +141,29 @@ pub enum BlockData {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WeightInfo {
-    norm: Float,                    // WgtNevt
-    n_tables: usize,                // NumTable
-    n_entries: usize,               // WgtNumEv
-    sum_weights_sq: Float,          // WgtSumW2
-    sum_sig_sq: Float,              // SigSumW2
-    sum_sig: Float,                 // SigSum
-    weight_sq_obs: Vec<Vec<Float>>, // WgtObsSumW2
-    sig_sq_obs: Vec<Vec<Float>>,    // SigObsSumW2
-    sig_obs: Vec<Vec<Float>>,       // SigObsSum
-    n_events_obs: Vec<Vec<usize>>,  // WgtObsNumEv
+    pub norm: Float,                    // WgtNevt
+    pub n_tables: usize,                // NumTable
+    pub n_entries: usize,               // WgtNumEv
+    pub sum_weights_sq: Float,          // WgtSumW2
+    pub sum_sig_sq: Float,              // SigSumW2
+    pub sum_sig: Float,                 // SigSum
+    pub weight_sq_obs: Vec<Vec<Float>>, // WgtObsSumW2
+    pub sig_sq_obs: Vec<Vec<Float>>,    // SigObsSumW2
+    pub sig_obs: Vec<Vec<Float>>,       // SigObsSum
+    pub n_events_obs: Vec<Vec<usize>>,  // WgtObsNumEv
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PDFInfo {
-    pdfs: Vec<usize>,                         // NPDFDG
-    n_pdf_dim: usize,                         // NPDFDim
-    fragmentation_functions: Vec<usize>,      // NFFPDG
-    n_ff_dim: usize,                          // NFFDim
-    n_subproc: usize,                         // NSubproc
-    pdf_flag_1: usize,                        // IPDFdef1
-    pdf_flag_2: usize,                        // IPDFdef2
-    pdf_flag_3: usize,                        // IPDFdef3
-    parton_flavors: Vec<Vec<(isize, isize)>>, // PDF1Flavor, PDF2Flavor
+    pub pdfs: Vec<usize>,                         // NPDFDG
+    pub n_pdf_dim: usize,                         // NPDFDim
+    pub fragmentation_functions: Vec<usize>,      // NFFPDG
+    pub n_ff_dim: usize,                          // NFFDim
+    pub n_subproc: usize,                         // NSubproc
+    pub pdf_flag_1: usize,                        // IPDFdef1
+    pub pdf_flag_2: usize,                        // IPDFdef2
+    pub pdf_flag_3: usize,                        // IPDFdef3
+    pub parton_flavors: Vec<Vec<(isize, isize)>>, // PDF1Flavor, PDF2Flavor
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -188,9 +192,9 @@ pub enum Grid {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserBlock {
-    user_flag: usize,         // IUserFlag
-    description: Vec<String>, // UserBlockDescr
-    lines: Vec<String>,       // UserLines
+    pub user_flag: usize,         // IUserFlag
+    pub description: Vec<String>, // UserBlockDescr
+    pub lines: Vec<String>,       // UserLines
 }
 
 #[cfg(test)]

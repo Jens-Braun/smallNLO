@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+use std::{fmt::Debug, sync::Arc};
+
 #[derive(Debug, Clone)]
 pub(crate) struct BaseConfig {
     pub(crate) nloop: i32,
@@ -9,6 +11,8 @@ pub(crate) struct BaseConfig {
     pub(crate) Qmax: f64,
     pub(crate) dlnlnQ: f64,
     pub(crate) interpolation_order: i32,
+    pub(crate) yorder: i32,
+    pub(crate) lnlnQorder: i32,
     pub(crate) factorization_scheme: FactorizationScheme,
     pub(crate) flavor_scheme: FlavorScheme,
     pub(crate) split_nf: i32,
@@ -24,6 +28,8 @@ impl Default for BaseConfig {
             Qmax: 28000.,
             dlnlnQ: 0.0125,
             interpolation_order: -6,
+            yorder: 5,
+            lnlnQorder: 4,
             factorization_scheme: FactorizationScheme::MSbar,
             flavor_scheme: FlavorScheme::default(),
             split_nf: 5,
@@ -31,16 +37,29 @@ impl Default for BaseConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) enum PDFConfig {
     Assign {
-        xfx: fn(f64, f64, &mut [f64; 13]),
+        xfx: Box<Arc<dyn Fn(f64, f64, &mut [f64; 13]) + Send + Sync>>,
     },
     Evolve {
-        xfx: fn(f64, f64, &mut [f64; 13]),
+        xfx: Box<Arc<dyn Fn(f64, f64, &mut [f64; 13]) + Send + Sync>>,
         muR: f64,
         Q0: f64,
     },
+}
+
+impl Debug for PDFConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Assign { .. } => f.debug_struct("PDFConfig::Assign").finish(),
+            Self::Evolve { muR, Q0, .. } => f
+                .debug_struct("PDFConfig::Evolve")
+                .field("muR", muR)
+                .field("Q0", Q0)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
