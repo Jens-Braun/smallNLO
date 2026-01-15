@@ -103,7 +103,7 @@ pub fn print_cross_section_table(args: &XSecArgs) -> Result<()> {
 }
 
 #[tracing::instrument(level = tracing::Level::DEBUG)]
-fn cross_section(path: &Path, pdf: &str, order: Option<usize>) -> Result<(Vec<(f32, f32)>, Array1<Float>)> {
+fn cross_section(path: &Path, pdf: &str, order: Option<usize>) -> Result<(Vec<(Float, Float)>, Array1<Float>)> {
     let tab = crate::util::read_table(path).wrap_err("Error while reading input table")?;
     let mut evaluator = FastNLOEvalutator::new(&tab, pdf, None, None);
     let xsec = evaluator
@@ -111,11 +111,12 @@ fn cross_section(path: &Path, pdf: &str, order: Option<usize>) -> Result<(Vec<(f
         .cross_sections()
         .wrap_err("Error while calculating cross sections")?;
     let bins = tab
+        .bin_info
         .bins
         .iter()
         .map(|b| match b.values[0] {
-            smallnlo::table::BinInfo::Central(c) => (c - b.size / 2., c + b.size / 2.),
-            smallnlo::table::BinInfo::Boundaries { low, high } => (low, high),
+            smallnlo::table::BinPosition::Central(c) => (c - b.size / 2., c + b.size / 2.),
+            smallnlo::table::BinPosition::Boundaries { low, high } => (low, high),
         })
         .collect();
     return Ok((bins, xsec));

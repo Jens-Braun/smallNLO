@@ -8,12 +8,20 @@ pub enum ReadError {
     FormatError(String, String),
     #[error("Unexpected end of file, expected {0}")]
     UnexpectedEOFError(String),
-    #[error(transparent)]
+    #[error("Error while parsing int")]
     ParseIntError(#[from] std::num::ParseIntError),
-    #[error(transparent)]
+    #[error("Error while parsing float")]
     ParseFloatError(#[from] std::num::ParseFloatError),
-    #[error(transparent)]
+    #[error("Error while parsing bool")]
     ParseBoolError(#[from] std::str::ParseBoolError),
     #[error(transparent)]
     Infallible(#[from] std::convert::Infallible),
+}
+
+#[derive(Error, Debug)]
+pub enum WriteError {
+    #[error("Unable to write to output file")]
+    IOError(#[from] std::io::Error),
+    #[error("Unable to write to output stream")]
+    FmtError(#[from] std::fmt::Error),
 }

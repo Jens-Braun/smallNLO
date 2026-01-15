@@ -1,4 +1,6 @@
 use color_eyre::{Result, eyre::Context};
+use flate2::bufread::GzEncoder;
+use std::io::Read;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -27,7 +29,20 @@ pub(crate) fn convert(args: &ConvertArgs) -> Result<()> {
     let format = FileFormat::probe_file(&args.file)?;
     let mut tab = crate::util::read_table(&args.file)?;
     match format {
-        FileFormat::SmallNLO | FileFormat::CompressedSmallNLO => todo!(),
+        FileFormat::SmallNLO | FileFormat::CompressedSmallNLO => {
+            if args.compress {
+                let mut buf = String::new();
+                tab.write(&mut buf)?;
+                let mut gz = GzEncoder::new(buf.as_bytes(), flate2::Compression::best());
+                let mut out = args.outfile.clone();
+                out.add_extension("gz");
+                let mut byte_buf = Vec::new();
+                gz.read_to_end(&mut byte_buf)?;
+                std::fs::write(out, &byte_buf)?;
+            } else {
+                tab.write_file(&args.outfile)?;
+            }
+        }
         FileFormat::CompressedFastNLO | FileFormat::FastNLO => {
             tracing::debug!("Input table is FastNLO, exporting SmallNLO");
             if args.strip {

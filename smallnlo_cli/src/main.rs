@@ -1,11 +1,13 @@
-use clap::{Parser, Subcommand, builder::styling};
-use color_eyre::{Result, eyre::eyre};
+use clap::{Parser, Subcommand, ValueEnum, builder::styling};
+use color_eyre::Result;
 use tracing_subscriber::{
     filter::LevelFilter,
     fmt::{self, format::FmtSpan},
     prelude::*,
 };
 mod convert;
+mod merge;
+mod reconstruct;
 mod strip;
 mod util;
 mod xsec;
@@ -22,9 +24,9 @@ const STYLES: styling::Styles = styling::Styles::styled()
 struct CliConfig {
     #[command(subcommand)]
     command: Command,
-    /// Level at which to emit tracing information (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`)
-    #[arg(long, default_value = "WARN", global = true)]
-    loglevel: String,
+    /// Level at which to emit tracing information
+    #[arg(long, value_enum, default_value_t = LogLevel::Warn, global = true)]
+    loglevel: LogLevel,
 }
 
 #[derive(Subcommand)]
@@ -36,22 +38,31 @@ enum Command {
     XSec(xsec::XSecArgs),
     /// Convert FastNLO <-> SmallNLO tables
     Convert(convert::ConvertArgs),
+    /// Merge FastNLO/SmallNLO tables into a single SmallNLO table.
+    /// Currently, this only adds the grids of multiple tables
+    Merge(merge::MergeArgs),
+    /// Reconstruct previously stripped scale dependence grids
+    Reconstruct(reconstruct::RecoArgs),
+}
+
+#[derive(ValueEnum, Clone)]
+enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
 }
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     let conf = CliConfig::parse();
-    let level_filter = match conf.loglevel.to_lowercase().as_str() {
-        "trace" => LevelFilter::TRACE,
-        "debug" => LevelFilter::DEBUG,
-        "info" => LevelFilter::INFO,
-        "warn" => LevelFilter::WARN,
-        "error" => LevelFilter::ERROR,
-        x => {
-            return Err(eyre!(
-                "Unknown loglevel `{x}`, expected `TRACE`, `DEBUG`, `INFO`, `WARN` or `ERROR`"
-            ));
-        }
+    let level_filter = match conf.loglevel {
+        LogLevel::Trace => LevelFilter::TRACE,
+        LogLevel::Debug => LevelFilter::DEBUG,
+        LogLevel::Info => LevelFilter::INFO,
+        LogLevel::Warn => LevelFilter::WARN,
+        LogLevel::Error => LevelFilter::ERROR,
     };
     tracing_subscriber::registry()
         .with(level_filter)
@@ -61,5 +72,7 @@ fn main() -> Result<()> {
         Command::Strip(args) => strip::strip(args),
         Command::XSec(args) => xsec::print_cross_section_table(args),
         Command::Convert(args) => convert::convert(args),
+        Command::Merge(args) => merge::merge(args),
+        Command::Reconstruct(args) => reconstruct::reconstruct(args),
     };
 }

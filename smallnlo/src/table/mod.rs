@@ -1,22 +1,28 @@
-use std::path::PathBuf;
+use std::fmt::Write;
+use std::path::Path;
 
 use ndarray::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::Float;
-use crate::error::ReadError;
+use crate::error::{ReadError, WriteError};
+use crate::table::writer::write_fastnlo;
 
+mod merge;
 mod reader;
+mod reconstruct;
+mod strip;
+mod writer;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FastNLOFile {
     pub metadata: Metadata,
-    pub bins: Vec<Bin>,
+    pub bin_info: BinInfo,
     pub blocks: Vec<Block>,
 }
 
 impl FastNLOFile {
-    pub fn read(file: PathBuf) -> Result<Self, ReadError> {
+    pub fn read(file: &Path) -> Result<Self, ReadError> {
         return reader::read_fastnlo(file);
     }
 
@@ -24,10 +30,15 @@ impl FastNLOFile {
         return reader::read_fastnlo_str(content);
     }
 
-    pub fn strip(&mut self) {
-        for b in self.blocks.iter_mut() {
-            b.strip();
-        }
+    pub fn write_file(&self, path: &Path) -> Result<(), WriteError> {
+        let mut buf = String::new();
+        writer::write_fastnlo(&mut buf, self)?;
+        std::fs::write(path, &buf)?;
+        return Ok(());
+    }
+
+    pub fn write(&self, w: &mut impl Write) -> Result<(), WriteError> {
+        return write_fastnlo(w, self);
     }
 }
 
@@ -46,13 +57,20 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct BinInfo {
+    pub bins: Vec<Bin>,
+    pub dim_labels: Vec<String>,
+    pub diff_bin: Vec<usize>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Bin {
-    pub values: Vec<BinInfo>,
+    pub values: Vec<BinPosition>,
     pub size: Float, // BinSize
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum BinInfo {
+pub enum BinPosition {
     Central(Float),                         // LoBin
     Boundaries { low: Float, high: Float }, // LoBin, HiBin
 }
@@ -68,35 +86,10 @@ pub struct Block {
     pub description: Vec<String>,      // CtrbDescript
     pub code_description: Vec<String>, // CodeDescript
     pub data: BlockData,
-    pub coeff_info_flags_1: Vec<usize>, // ICoeffInfoBlockFlag1
-    pub coeff_info_flags_2: Vec<usize>, // ICoeffInfoBlockFlag2
+    pub coeff_info_flags_1: Vec<usize>,            // ICoeffInfoBlockFlag1
+    pub coeff_info_flags_2: Vec<usize>,            // ICoeffInfoBlockFlag2
     pub coeff_block_description: Vec<Vec<String>>, // CoeffInfoBlockDescript
-    pub coeff_block_content: Vec<Vec<Float>>, // CoeffInfoBlockContent
-}
-
-impl Block {
-    pub fn strip(&mut self) {
-        match self.data {
-            BlockData::TheoryBlock { ref mut grid, .. } => match *grid {
-                Grid::Flex {
-                    ref mut grid_f,
-                    ref mut grid_r,
-                    ref mut grid_ff,
-                    ref mut grid_rf,
-                    ref mut grid_rr,
-                    ..
-                } => {
-                    *grid_f = None;
-                    *grid_r = None;
-                    *grid_ff = None;
-                    *grid_rr = None;
-                    *grid_rf = None;
-                }
-                _ => (),
-            },
-            _ => (),
-        }
-    }
+    pub coeff_block_content: Vec<Vec<Float>>,      // CoeffInfoBlockContent
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -123,9 +116,9 @@ pub enum BlockData {
         corr_high: Array2<Float>,    // CorrHi
     },
     TheoryBlock {
-        reference_table: bool,   // IRef
-        scale_dependence: usize, // IScaleDep
-        n_events: isize,         // Nevt
+        reference_table: bool,     // IRef
+        i_scale_dependence: usize, // IScaleDep
+        n_events: isize,           // Nevt
         weight_info: Option<WeightInfo>,
         alphas_power: usize, // Npow
         pdf_info: PDFInfo,
@@ -141,6 +134,7 @@ pub enum BlockData {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WeightInfo {
+    pub n_events: Float,                // NEvt
     pub norm: Float,                    // WgtNevt
     pub n_tables: usize,                // NumTable
     pub n_entries: usize,               // WgtNumEv
@@ -207,7 +201,7 @@ mod tests {
         let file = PathBuf::from(
             "/home/jens/KIT/N3LO_Grid/2jetfc.NNLO.fnl3832-fc-v2_yb0_ys0_ptavgj12_arxiv-1705.02628_v25.tab",
         );
-        let tab = FastNLOFile::read(file);
+        let tab = FastNLOFile::read(&file);
         match tab {
             Err(e) => {
                 println!("{e}");

@@ -34,27 +34,18 @@ impl FileFormat {
             // SmallNLO magic number
             [0x7c, 0x6e, 0x6c, 0x6f] => Self::SmallNLO,
             _ => {
-                return Err(eyre!(
-                    "Unable to identify input table as one of the supported formats"
-                ));
+                return Err(eyre!("Unable to identify input table as one of the supported formats"));
             }
         });
     }
 }
 
-pub(crate) fn write_snlo(
-    table: &FastNLOFile,
-    path: &Path,
-    compress: bool,
-    level: i32,
-) -> Result<()> {
-    let mut tab_ser =
-        bitcode::serialize(table).wrap_err("Error while serializing FastNLO table")?;
-    let mut outfile =
-        std::fs::File::create(path).wrap_err("Error while opening the output file")?;
+pub(crate) fn write_snlo(table: &FastNLOFile, path: &Path, compress: bool, level: i32) -> Result<()> {
+    let mut tab_ser = bitcode::serialize(table).wrap_err("Error while serializing FastNLO table")?;
+    let mut outfile = std::fs::File::create(path).wrap_err("Error while opening the output file")?;
     if compress {
-        tab_ser = zstd::encode_all(tab_ser.as_slice(), level)
-            .wrap_err("Error while compressing serialized FastNLO table")?;
+        tab_ser =
+            zstd::encode_all(tab_ser.as_slice(), level).wrap_err("Error while compressing serialized FastNLO table")?;
         outfile
             .write_all(&tab_ser)
             .wrap_err("Error while writing to the output file")?;
@@ -71,10 +62,11 @@ pub(crate) fn write_snlo(
 }
 
 pub(crate) fn read_table(path: &Path) -> Result<FastNLOFile> {
-    let mut file = std::fs::File::open(path).wrap_err("Unable to open input table")?;
+    let mut file =
+        std::fs::File::open(path).wrap_err_with(|| format!("Unable to open input table `{}`", path.display()))?;
     let mut buf = [0u8; 4];
     file.read_exact(&mut buf)
-        .wrap_err("Unable to read data from input table")?;
+        .wrap_err_with(|| format!("Unable to read data from input table `{}`", path.display()))?;
     drop(file);
     let tab = match buf {
         // GZip magic number
@@ -95,12 +87,8 @@ pub(crate) fn read_table(path: &Path) -> Result<FastNLOFile> {
         [0x28, 0xb5, 0x2f, 0xfd] => {
             tracing::info!("Reading compressed SmallNLO table `{path:?}`");
             bitcode::deserialize(
-                &zstd::decode_all(
-                    std::fs::read(path)
-                        .wrap_err("Unable to open input table")?
-                        .as_slice(),
-                )
-                .wrap_err("Unable to decompress input table")?,
+                &zstd::decode_all(std::fs::read(path).wrap_err("Unable to open input table")?.as_slice())
+                    .wrap_err("Unable to decompress input table")?,
             )
             .wrap_err("Unable to deserialize decompressed input table")?
         }
@@ -111,9 +99,7 @@ pub(crate) fn read_table(path: &Path) -> Result<FastNLOFile> {
                 .wrap_err("Unable to deserialize input table")?
         }
         _ => {
-            return Err(eyre!(
-                "Unable to identify input table as one of the supported formats"
-            ));
+            return Err(eyre!("Unable to identify input table as one of the supported formats"));
         }
     };
     return Ok(tab);

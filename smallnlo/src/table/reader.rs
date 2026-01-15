@@ -2,14 +2,14 @@ use ndarray::prelude::*;
 
 use crate::error::ReadError;
 use crate::table::{
-    Bin, BinInfo, Block, BlockData, FastNLOFile, Float, Grid, Metadata, PDFInfo, UserBlock,
+    Bin, BinInfo, BinPosition, Block, BlockData, FastNLOFile, Float, Grid, Metadata, PDFInfo, /* , UserBlock*/
     WeightInfo,
 };
-use std::{any::type_name, path::PathBuf, str::FromStr};
+use std::{any::type_name, path::Path, str::FromStr};
 
 const SEP: &str = "1234567890";
 
-pub(crate) fn read_fastnlo(file: PathBuf) -> Result<FastNLOFile, ReadError> {
+pub(crate) fn read_fastnlo(file: &Path) -> Result<FastNLOFile, ReadError> {
     let content = std::fs::read_to_string(file)?;
     return read_fastnlo_str(&content);
 }
@@ -27,7 +27,16 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
     let n_contrib = take::<usize>(lines)?;
     let n_mult = take::<usize>(lines)?;
     let n_data = take::<usize>(lines)?;
-    let n_user = take::<usize>(lines)?;
+
+    // This is defined in v2.1 of the table format, but still implemented in the code for later versions
+    let _n_user_string = take::<usize>(lines)?; // NuserString
+    let _n_user_int = take::<usize>(lines)?; // NuserInt
+    let _n_user_float = take::<usize>(lines)?; // NuserFloat
+    let _i_machine = take::<usize>(lines)?; // IMachine
+    let n_user = 0;
+
+    // This block is defined in the table format >= v2.3, but not implemented in the `fastnlotoolkit` code
+    /*let n_user = take::<usize>(lines)?;
     let mut user_blocks = Vec::with_capacity(n_user);
     for _ in 0..n_user {
         let user_flag = take::<usize>(lines)?;
@@ -38,10 +47,11 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
             description,
             lines,
         });
-    }
+    }*/
     // Table contains some unknown numbers here, so we skip to the next SEP
-    let mut line_iter = line_iter.skip_while(|line| **line != *SEP);
-    let lines = &mut line_iter;
+    // -> unknown numbers turned out to be old convention, now handled above
+    //let mut line_iter = line_iter.skip_while(|line| **line != *SEP);
+    //let lines = &mut line_iter;
     assert_eq!(*lines.next().unwrap(), *SEP);
 
     // ---- Block A2 ----
@@ -69,16 +79,16 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
 
     let n_bins = take::<usize>(lines)?;
     let n_dim = take::<usize>(lines)?;
-    let _dim_labels = take_multiple::<String>(lines, Some(n_dim))?;
+    let dim_labels = take_multiple::<String>(lines, Some(n_dim))?;
     let diff_bin = take_multiple::<usize>(lines, Some(n_dim))?;
     let mut bin_infos = Vec::with_capacity(n_bins);
     for _ in 0..n_bins {
         let mut values = Vec::with_capacity(n_dim);
         for j in 0..n_dim {
             if diff_bin[j] == 1 {
-                values.push(BinInfo::Central(take::<Float>(lines)?));
+                values.push(BinPosition::Central(take::<Float>(lines)?));
             } else if diff_bin[j] == 2 {
-                values.push(BinInfo::Boundaries {
+                values.push(BinPosition::Boundaries {
                     low: take::<Float>(lines)?,
                     high: take::<Float>(lines)?,
                 });
@@ -94,10 +104,13 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
         .zip(bin_sizes.into_iter())
         .map(|(values, size)| Bin { values, size })
         .collect::<Vec<_>>();
-    tracing::info!(
-        "Successfully read {n_dim}-dimensional binning with {n_bins} bins per dimension"
-    );
+    tracing::info!("Successfully read {n_dim}-dimensional binning with {n_bins} bins per dimension");
     tracing::debug!(?bins, "Successfully read binning");
+    let bin_info = BinInfo {
+        bins,
+        dim_labels,
+        diff_bin,
+    };
 
     let norm_flag = take::<isize>(lines)?;
     let mut _denom_table = None;
@@ -128,9 +141,7 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
             tracing::info!("Reading data of block {b} (data block): \n        {description:?}");
             read_data_block(lines.by_ref(), n_bins)?
         } else if mult_block {
-            tracing::info!(
-                "Reading data of block {b} (multiplicative contribution block): \n        {description:?}"
-            );
+            tracing::info!("Reading data of block {b} (multiplicative contribution block): \n        {description:?}");
             read_mult_block(lines.by_ref(), n_bins)?
         } else {
             tracing::info!("Reading data of block {b} (theory block): \n        {description:?}");
@@ -180,17 +191,14 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
     tracing::info!("Successfully read FastNLO table");
     return Ok(FastNLOFile {
         metadata,
-        bins,
+        bin_info,
         blocks,
     });
 }
 
 #[inline]
 #[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
-fn read_data_block<'a>(
-    lines: &mut impl Iterator<Item = &'a str>,
-    n_bins: usize,
-) -> Result<BlockData, ReadError> {
+fn read_data_block<'a>(lines: &mut impl Iterator<Item = &'a str>, n_bins: usize) -> Result<BlockData, ReadError> {
     let n_uncorr = take::<usize>(lines)?;
     let uncorr_sources = take_multiple::<String>(lines, Some(n_uncorr))?;
     let n_corr = take::<usize>(lines)?;
@@ -214,8 +222,7 @@ fn read_data_block<'a>(
         }
     }
     let n_mat = take::<usize>(lines)?;
-    let corr_matrix =
-        Array2::from_shape_simple_fn((n_mat, n_bins * n_bins), || take::<Float>(lines).unwrap());
+    let corr_matrix = Array2::from_shape_simple_fn((n_mat, n_bins * n_bins), || take::<Float>(lines).unwrap());
 
     return Ok(BlockData::DataBlock {
         uncorr_sources,
@@ -232,10 +239,7 @@ fn read_data_block<'a>(
 
 #[inline]
 #[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
-fn read_mult_block<'a>(
-    lines: &mut impl Iterator<Item = &'a str>,
-    n_bins: usize,
-) -> Result<BlockData, ReadError> {
+fn read_mult_block<'a>(lines: &mut impl Iterator<Item = &'a str>, n_bins: usize) -> Result<BlockData, ReadError> {
     let n_uncorr = take::<usize>(lines)?;
     let uncorr_sources = take_multiple::<String>(lines, Some(n_uncorr))?;
     let n_corr = take::<usize>(lines)?;
@@ -279,17 +283,13 @@ fn read_theory_block<'a>(
     scale_dependence: usize,
 ) -> Result<BlockData, ReadError> {
     let reference_table = take::<usize>(lines)? == 1;
-    let _i_scale_dependence = take::<usize>(lines)?;
-    let n_events = take::<isize>(lines)?;
+    let i_scale_dependence = take::<usize>(lines)?;
+    let n_events_int = take::<isize>(lines)?;
     let weight_info;
-    if n_events < 0 {
-        let _n_events_2 = take::<Float>(lines)?;
+    if n_events_int < 0 {
+        let n_events = take::<Float>(lines)?;
         let norm = take::<Float>(lines)?;
-        let n_tables = if n_events <= -2 {
-            take::<usize>(lines)?
-        } else {
-            1
-        };
+        let n_tables = if n_events_int <= -2 { take::<usize>(lines)? } else { 1 };
         let n_entries = take::<usize>(lines)?;
         let sum_weights_sq = take::<Float>(lines)?;
         let sum_sig_sq: Float = take::<Float>(lines)?;
@@ -299,6 +299,7 @@ fn read_theory_block<'a>(
         let sig_obs = take_nested_vec::<Float>(lines, None)?;
         let n_events_obs = take_nested_vec::<usize>(lines, None)?;
         weight_info = Some(WeightInfo {
+            n_events,
             norm,
             n_tables,
             n_entries,
@@ -310,9 +311,7 @@ fn read_theory_block<'a>(
             sig_obs,
             n_events_obs,
         });
-        tracing::info!(
-            "Found full weight info with normalization `{norm}` and {n_entries} entries"
-        );
+        tracing::info!("Found full weight info with normalization `{norm}` and {n_entries} entries");
     } else {
         weight_info = None;
     }
@@ -328,20 +327,14 @@ fn read_theory_block<'a>(
         todo!();
     }
     let x1_nodes = take_nested_vec::<Float>(lines, Some(n_bins))?;
-    tracing::info!(
-        "Found x₁ grid with {} nodes for the first bin",
-        x1_nodes[0].len()
-    );
+    tracing::info!("Found x₁ grid with {} nodes for the first bin", x1_nodes[0].len());
     let x2_nodes = if pdf_info.n_pdf_dim == 2 {
         take_nested_vec::<Float>(lines, Some(n_bins))?
     } else {
         Vec::new()
     };
     if !x2_nodes.is_empty() {
-        tracing::info!(
-            "Found x₂ grid with {} nodes for the second bin",
-            x2_nodes[0].len()
-        );
+        tracing::info!("Found x₂ grid with {} nodes for the second bin", x2_nodes[0].len());
     }
     let z_nodes = if pdf_info.n_ff_dim > 0 {
         take_nested_vec::<Float>(lines, Some(n_bins))?
@@ -357,7 +350,7 @@ fn read_theory_block<'a>(
         if let Some(ref w) = weight_info {
             w.norm
         } else {
-            n_events as Float
+            n_events_int as Float
         },
         scale_dependence,
         n_bins,
@@ -369,8 +362,8 @@ fn read_theory_block<'a>(
     )?;
     return Ok(BlockData::TheoryBlock {
         reference_table,
-        scale_dependence,
-        n_events,
+        i_scale_dependence,
+        n_events: n_events_int,
         weight_info,
         alphas_power,
         pdf_info,
@@ -485,8 +478,7 @@ fn read_grid<'a>(
             _ => unreachable!(),
         };
         let nxmax = *nxmax_vec.iter().max().unwrap();
-        let mut grid =
-            Array6::zeros((n_bins, n_scale_dim, n_var_max, n_node_max, nxmax, n_subproc));
+        let mut grid = Array6::zeros((n_bins, n_scale_dim, n_var_max, n_node_max, nxmax, n_subproc));
         for i in 0..n_bins {
             for j in 0..n_scale_dim {
                 for k in 0..n_scale_var[j] {
@@ -516,12 +508,8 @@ fn read_grid<'a>(
         match scale_dependence {
             4 => tracing::info!("Reading flex-type grid with contributions `[Finite]` (LO)"),
             5 => tracing::info!("Reading flex-type grid with contributions `[Finite, R, F]` (NLO)"),
-            6 => tracing::info!(
-                "Reading flex-type grid with contributions `[Finite, R, F, RR]` (NNLO)"
-            ),
-            7 => tracing::info!(
-                "Reading flex-type grid with contributions `[Finite, R, F, RR, FF, RF]` (NNLO)"
-            ),
+            6 => tracing::info!("Reading flex-type grid with contributions `[Finite, R, F, RR]` (NNLO)"),
+            7 => tracing::info!("Reading flex-type grid with contributions `[Finite, R, F, RR, FF, RF]` (NNLO)"),
             _ => unreachable!(),
         }
         let _n_bins = take::<usize>(lines)?;
@@ -598,14 +586,11 @@ fn read_grid<'a>(
             grid_rf = None;
         }
         let _n_bins = take::<usize>(lines)?;
-        let sigma_ref_mixed =
-            Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
+        let sigma_ref_mixed = Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
         let _n_bins = take::<usize>(lines)?;
-        let sigma_ref_s1 =
-            Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
+        let sigma_ref_s1 = Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
         let _n_bins = take::<usize>(lines)?;
-        let sigma_ref_s2 =
-            Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
+        let sigma_ref_s2 = Array2::from_shape_simple_fn((n_bins, n_subproc), || take::<Float>(lines).unwrap());
         tracing::info!(
             "Successfully read {} grids of dimensions `{:?}` containing {} entries each",
             match scale_dependence {
@@ -670,10 +655,7 @@ where
 {
     return Ok(lines
         .next()
-        .ok_or(ReadError::UnexpectedEOFError(format!(
-            "`{}`",
-            type_name::<T>()
-        )))?
+        .ok_or(ReadError::UnexpectedEOFError(format!("`{}`", type_name::<T>())))?
         .parse::<T>()?);
 }
 
