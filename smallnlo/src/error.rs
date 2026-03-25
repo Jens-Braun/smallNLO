@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -24,4 +26,10 @@ pub enum WriteError {
     IOError(#[from] std::io::Error),
     #[error("Unable to write to output stream")]
     FmtError(#[from] std::fmt::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum MergeError {
+    #[error("Metadata field {0} is incompatible: {1} vs {2}")]
+    IncompatibleTables(String, String, String),
 }

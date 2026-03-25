@@ -1,7 +1,10 @@
 use color_eyre::{Result, eyre::Context};
 use ndarray::prelude::*;
 use smallnlo::{FastNLOEvalutator, Float};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tabled::{
     Table,
     settings::{Alignment, Remove, Span, Style, object::FirstRow, style::HorizontalLine, themes::BorderCorrection},
@@ -22,13 +25,16 @@ pub(crate) struct XSecArgs {
     /// Order in perturbation theory up to which to calculate the cross section (i.e. 0 = LO, 1 = NLO, ...)
     #[arg(short, long, default_value = None)]
     order: Option<usize>,
+    #[arg(short, long)]
+    /// Fixed scale to evaluate the table at
+    scale: Option<f64>,
 }
 
 pub fn print_cross_section_table(args: &XSecArgs) -> Result<()> {
-    let (bins, xsec) = cross_section(&args.file, &args.pdf, args.order.clone())?;
+    let (bins, xsec) = cross_section(&args.file, &args.pdf, args.order.clone(), args.scale.clone())?;
     let xsec_compare = if let Some(file2) = &args.compare {
         Some(
-            cross_section(file2, &args.pdf, args.order.clone())
+            cross_section(file2, &args.pdf, args.order.clone(), args.scale.clone())
                 .wrap_err("Error while calculating cross sections of comparison file")?
                 .1,
         )
@@ -103,9 +109,21 @@ pub fn print_cross_section_table(args: &XSecArgs) -> Result<()> {
 }
 
 #[tracing::instrument(level = tracing::Level::DEBUG)]
-fn cross_section(path: &Path, pdf: &str, order: Option<usize>) -> Result<(Vec<(Float, Float)>, Array1<Float>)> {
+fn cross_section(
+    path: &Path,
+    pdf: &str,
+    order: Option<usize>,
+    scale: Option<f64>,
+) -> Result<(Vec<(f64, f64)>, Array1<Float>)> {
     let tab = crate::util::read_table(path).wrap_err("Error while reading input table")?;
-    let mut evaluator = FastNLOEvalutator::new(&tab, pdf, None, None);
+    let mu = if let Some(s) = scale {
+        Some(Box::new(
+            Arc::new(move |s1, _| s * s1) as Arc<dyn Fn(f64, f64) -> f64 + Send + Sync>
+        ))
+    } else {
+        None
+    };
+    let mut evaluator = FastNLOEvalutator::new(&tab, pdf, mu.clone(), mu);
     let xsec = evaluator
         .max_power(order)
         .cross_sections()

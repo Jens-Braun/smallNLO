@@ -47,7 +47,7 @@ pub(crate) fn convert(args: &ConvertArgs) -> Result<()> {
             tracing::debug!("Input table is FastNLO, exporting SmallNLO");
             if args.strip {
                 tracing::debug!("Stripping scale dependence grids");
-                tab.strip();
+                tab.strip(None);
             }
             let mut out_path = args.outfile.clone();
             out_path.set_extension("snlo");

@@ -14,7 +14,7 @@ mod reconstruct;
 mod strip;
 mod writer;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FastNLOFile {
     pub metadata: Metadata,
     pub bin_info: BinInfo,
@@ -42,7 +42,7 @@ impl FastNLOFile {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Metadata {
     pub table_version: usize,     // ltabversion
     pub scenario_name: String,    // ScenName
@@ -52,30 +52,30 @@ pub struct Metadata {
     pub n_user: usize,            // NUserBlocks
     pub unit: usize,              // lpublunits
     pub description: Vec<String>, // ScDescript
-    pub cms_energy: Float,        // Ecms
+    pub cms_energy: f64,          // Ecms
     pub alphas_ord: usize,        // ILOord
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BinInfo {
     pub bins: Vec<Bin>,
     pub dim_labels: Vec<String>,
     pub diff_bin: Vec<usize>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Bin {
     pub values: Vec<BinPosition>,
-    pub size: Float, // BinSize
+    pub size: f64, // BinSize
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum BinPosition {
-    Central(Float),                         // LoBin
-    Boundaries { low: Float, high: Float }, // LoBin, HiBin
+    Central(f64),                       // LoBin
+    Boundaries { low: f64, high: f64 }, // LoBin, HiBin
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Block {
     pub unit: usize,                   // IXsectUnits
     pub data_block: bool,              // IDataFlag
@@ -89,10 +89,10 @@ pub struct Block {
     pub coeff_info_flags_1: Vec<usize>,            // ICoeffInfoBlockFlag1
     pub coeff_info_flags_2: Vec<usize>,            // ICoeffInfoBlockFlag2
     pub coeff_block_description: Vec<Vec<String>>, // CoeffInfoBlockDescript
-    pub coeff_block_content: Vec<Vec<Float>>,      // CoeffInfoBlockContent
+    pub coeff_block_content: Vec<Vec<f64>>,        // CoeffInfoBlockContent
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum BlockData {
     DataBlock {
         uncorr_sources: Vec<String>, // UncDescr
@@ -132,22 +132,22 @@ pub enum BlockData {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct WeightInfo {
-    pub n_events: Float,                // NEvt
-    pub norm: Float,                    // WgtNevt
-    pub n_tables: usize,                // NumTable
-    pub n_entries: usize,               // WgtNumEv
-    pub sum_weights_sq: Float,          // WgtSumW2
-    pub sum_sig_sq: Float,              // SigSumW2
-    pub sum_sig: Float,                 // SigSum
-    pub weight_sq_obs: Vec<Vec<Float>>, // WgtObsSumW2
-    pub sig_sq_obs: Vec<Vec<Float>>,    // SigObsSumW2
-    pub sig_obs: Vec<Vec<Float>>,       // SigObsSum
-    pub n_events_obs: Vec<Vec<usize>>,  // WgtObsNumEv
+    pub n_events: f64,                 // NEvt
+    pub norm: f64,                     // WgtNevt
+    pub n_tables: usize,               // NumTable
+    pub n_entries: usize,              // WgtNumEv
+    pub sum_weights_sq: f64,           // WgtSumW2
+    pub sum_sig_sq: f64,               // SigSumW2
+    pub sum_sig: f64,                  // SigSum
+    pub weight_sq_obs: Vec<Vec<f64>>,  // WgtObsSumW2
+    pub sig_sq_obs: Vec<Vec<f64>>,     // SigObsSumW2
+    pub sig_obs: Vec<Vec<f64>>,        // SigObsSum
+    pub n_events_obs: Vec<Vec<usize>>, // WgtObsNumEv
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PDFInfo {
     pub pdfs: Vec<usize>,                         // NPDFDG
     pub n_pdf_dim: usize,                         // NPDFDim
@@ -160,7 +160,7 @@ pub struct PDFInfo {
     pub parton_flavors: Vec<Vec<(isize, isize)>>, // PDF1Flavor, PDF2Flavor
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum Grid {
     Fixed {
         n_scale_var: Vec<usize>,   // Nscalevar
@@ -184,7 +184,7 @@ pub enum Grid {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserBlock {
     pub user_flag: usize,         // IUserFlag
     pub description: Vec<String>, // UserBlockDescr

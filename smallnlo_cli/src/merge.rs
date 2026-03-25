@@ -36,7 +36,7 @@ pub(crate) fn merge(args: &MergeArgs) -> Result<()> {
         .par_iter()
         .map(|file| read_table(file).wrap_err("Unable to read table {file}"))
         .try_reduce_with(|mut t1, t2| {
-            t1.merge(&t2);
+            t1.merge(&t2).wrap_err("Incompatible tables while merging")?;
             Ok(t1)
         });
     if let Some(res) = res {

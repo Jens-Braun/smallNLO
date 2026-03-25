@@ -60,14 +60,14 @@ impl FastNLOFile {
                             match n {
                                 1 => {
                                     let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 1);
-                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                                     grids_r.push_back((p - 1.) * BETA_0 * lo_grid.grid.clone() * delta_lo_norm);
                                 }
                                 2 => {
                                     let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 2);
-                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                                     let nlo_grid = self.lower_order_grid(pdf_info, *alphas_power, 1);
-                                    let delta_nlo_norm = weight_info.as_ref().unwrap().norm / nlo_grid.norm;
+                                    let delta_nlo_norm = weight_info.as_ref().unwrap().norm as Float / nlo_grid.norm;
                                     grids_r.push_back(
                                         (p - 1.) * BETA_0 * nlo_grid.grid.clone() * delta_nlo_norm
                                             + (p - 2.) * BETA_1 * lo_grid.grid * delta_lo_norm,
@@ -87,7 +87,7 @@ impl FastNLOFile {
                             match n {
                                 1 => {
                                     let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 1);
-                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                                     grids_f
                                         .push_back(-(pdf_0_1 + pdf_1_0) / &pdf * lo_grid.grid.clone() * delta_lo_norm);
                                 }
@@ -99,9 +99,9 @@ impl FastNLOFile {
                                     let pdf_0_2 = pdfc_0_2.as_ref().unwrap();
                                     let pdf_2_0 = pdfc_2_0.as_ref().unwrap();
                                     let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 2);
-                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                                    let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                                     let nlo_grid = self.lower_order_grid(pdf_info, *alphas_power, 1);
-                                    let delta_nlo_norm = weight_info.as_ref().unwrap().norm / nlo_grid.norm;
+                                    let delta_nlo_norm = weight_info.as_ref().unwrap().norm as Float / nlo_grid.norm;
                                     grids_f.push_back(
                                         -((pdf_0_1 + pdf_1_0) * nlo_grid.grid.clone() * delta_nlo_norm
                                             + (pdf_0_2 + pdf_2_0) * lo_grid.grid * delta_lo_norm)
@@ -118,7 +118,7 @@ impl FastNLOFile {
                         if grid_rr.is_none() {
                             tracing::debug!("Reconstructing RR grid");
                             let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 2);
-                            let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                            let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                             grids_rr.push_back(
                                 0.5 * (p - 1.) * (p - 2.) * BETA_0 * BETA_0 * lo_grid.grid.clone() * delta_lo_norm,
                             );
@@ -144,7 +144,7 @@ impl FastNLOFile {
                             let pdf_11_0 = pdfc_11_0.as_ref().unwrap();
                             let pdf_1_1 = pdfc_1_1.as_ref().unwrap();
                             let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 2);
-                            let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                            let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                             grids_ff.push_back(
                                 0.5 * (pdf_11_0 + pdf_0_11 + BETA_0 * (pdf_1_0 + pdf_0_1) + 2. * pdf_1_1) / &pdf
                                     * lo_grid.grid.clone()
@@ -160,7 +160,7 @@ impl FastNLOFile {
                             let pdf_0_1 = pdfc_0_1.as_ref().unwrap();
                             let pdf_1_0 = pdfc_1_0.as_ref().unwrap();
                             let lo_grid = self.lower_order_grid(pdf_info, *alphas_power, 2);
-                            let delta_lo_norm = weight_info.as_ref().unwrap().norm / lo_grid.norm;
+                            let delta_lo_norm = weight_info.as_ref().unwrap().norm as Float / lo_grid.norm;
                             grids_rf.push_back(
                                 -(p - 1.) * BETA_0 * (pdf_0_1 + pdf_1_0) / &pdf * lo_grid.grid.clone() * delta_lo_norm,
                             );

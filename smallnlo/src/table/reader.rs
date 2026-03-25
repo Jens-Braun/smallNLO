@@ -57,7 +57,7 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
     // ---- Block A2 ----
     let unit = take::<usize>(lines)?;
     let description = take_multiple::<String>(lines, None)?;
-    let cms_energy = take::<Float>(lines)?;
+    let cms_energy = take::<f64>(lines)?;
     let alphas_ord = take::<usize>(lines)?;
     tracing::info!(
         "Successfully read metadata of FastNLO table (v{table_version}) for scenario `{scenario_name}` containing `{}` blocks",
@@ -86,11 +86,11 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
         let mut values = Vec::with_capacity(n_dim);
         for j in 0..n_dim {
             if diff_bin[j] == 1 {
-                values.push(BinPosition::Central(take::<Float>(lines)?));
+                values.push(BinPosition::Central(take::<f64>(lines)?));
             } else if diff_bin[j] == 2 {
                 values.push(BinPosition::Boundaries {
-                    low: take::<Float>(lines)?,
-                    high: take::<Float>(lines)?,
+                    low: take::<f64>(lines)?,
+                    high: take::<f64>(lines)?,
                 });
             } else {
                 unreachable!();
@@ -98,7 +98,7 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
         }
         bin_infos.push(values);
     }
-    let bin_sizes = take_multiple::<Float>(lines, Some(n_bins))?;
+    let bin_sizes = take_multiple::<f64>(lines, Some(n_bins))?;
     let bins = bin_infos
         .into_iter()
         .zip(bin_sizes.into_iter())
@@ -161,7 +161,7 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
                 coeff_info_flags_1.push(take::<usize>(lines)?);
                 coeff_info_flags_2.push(take::<usize>(lines)?);
                 coeff_block_description.push(take_multiple::<String>(lines, None)?);
-                coeff_block_content.push(take_multiple::<Float>(lines, None)?);
+                coeff_block_content.push(take_multiple::<f64>(lines, None)?);
             }
         } else {
             coeff_info_flags_1 = Vec::new();
@@ -287,16 +287,16 @@ fn read_theory_block<'a>(
     let n_events_int = take::<isize>(lines)?;
     let weight_info;
     if n_events_int < 0 {
-        let n_events = take::<Float>(lines)?;
-        let norm = take::<Float>(lines)?;
+        let n_events = take::<f64>(lines)?;
+        let norm = take::<f64>(lines)?;
         let n_tables = if n_events_int <= -2 { take::<usize>(lines)? } else { 1 };
         let n_entries = take::<usize>(lines)?;
-        let sum_weights_sq = take::<Float>(lines)?;
-        let sum_sig_sq: Float = take::<Float>(lines)?;
-        let sum_sig: Float = take::<Float>(lines)?;
-        let weight_sq_obs = take_nested_vec::<Float>(lines, None)?;
-        let sig_sq_obs = take_nested_vec::<Float>(lines, None)?;
-        let sig_obs = take_nested_vec::<Float>(lines, None)?;
+        let sum_weights_sq = take::<f64>(lines)?;
+        let sum_sig_sq: f64 = take::<f64>(lines)?;
+        let sum_sig: f64 = take::<f64>(lines)?;
+        let weight_sq_obs = take_nested_vec::<f64>(lines, None)?;
+        let sig_sq_obs = take_nested_vec::<f64>(lines, None)?;
+        let sig_obs = take_nested_vec::<f64>(lines, None)?;
         let n_events_obs = take_nested_vec::<usize>(lines, None)?;
         weight_info = Some(WeightInfo {
             n_events,
@@ -350,7 +350,7 @@ fn read_theory_block<'a>(
         if let Some(ref w) = weight_info {
             w.norm
         } else {
-            n_events_int as Float
+            n_events_int as f64
         },
         scale_dependence,
         n_bins,
@@ -429,7 +429,7 @@ fn read_pdf_info<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<PDFInf
 #[tracing::instrument(skip_all, level = tracing::Level::DEBUG)]
 fn read_grid<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
-    norm: Float,
+    norm: f64,
     scale_dependence: usize,
     n_bins: usize,
     n_scale_dim: usize,
@@ -627,7 +627,7 @@ fn fill_grid<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     mut grid: ArrayViewMut5<Float>,
     n_subproc: usize,
-    norm: Float,
+    norm: f64,
 ) -> Result<(), ReadError> {
     let n_bins = take::<usize>(lines)?;
     for i in 0..n_bins {
@@ -638,7 +638,7 @@ fn fill_grid<'a>(
                 let n_scale_node_2 = take::<usize>(lines)?;
                 for l in 0..n_scale_node_2 {
                     for m in 0..n_subproc {
-                        grid[[i, j, k, l, m]] = norm * take::<Float>(lines)?;
+                        grid[[i, j, k, l, m]] = (norm * take::<f64>(lines)?) as Float;
                     }
                 }
             }

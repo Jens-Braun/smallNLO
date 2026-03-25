@@ -70,7 +70,7 @@ impl FastNLOEvalutator<'_, '_> {
                             ..
                         } => {
                             let unit = (10.0 as Float).powi((self.file.metadata.unit as i32) - (block.unit as i32));
-                            let normalization = unit / weight_info.as_ref().unwrap().norm;
+                            let normalization = unit / weight_info.as_ref().unwrap().norm as Float;
                             let p = *alphas_power as Float;
                             let n = *alphas_power - self.file.metadata.alphas_ord;
                             let pdf = self.file.build_pdf_grid(block, &hp, &self.mu_f_function, 0, 0);

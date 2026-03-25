@@ -226,7 +226,15 @@ fn write_theory_block(w: &mut impl Write, b: &BlockData) -> Result<(), WriteErro
             for v in scale_description.iter() {
                 w_slice(w, v)?;
             }
-            write_grid(w, grid, if let Some(wgt) = weight_info { wgt.norm } else { 1. })?;
+            write_grid(
+                w,
+                grid,
+                if let Some(wgt) = weight_info {
+                    wgt.norm as Float
+                } else {
+                    1.
+                },
+            )?;
         }
         _ => unreachable!(),
     }

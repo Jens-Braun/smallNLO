@@ -1,15 +1,20 @@
 use super::{Block, BlockData, FastNLOFile, Grid};
 
 impl FastNLOFile {
-    pub fn strip(&mut self) {
+    pub fn strip(&mut self, force_scale_format: Option<usize>) {
         for b in self.blocks.iter_mut() {
-            b.strip();
+            b.strip(force_scale_format);
         }
     }
 }
 
 impl Block {
-    pub fn strip(&mut self) {
+    pub fn strip(&mut self, force_scale_format: Option<usize>) {
+        if let Some(fsf) = force_scale_format
+            && self.scale_format > fsf
+        {
+            self.scale_format = fsf;
+        }
         match self.data {
             BlockData::TheoryBlock { ref mut grid, .. } => match *grid {
                 Grid::Flex {

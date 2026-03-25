@@ -131,7 +131,7 @@ impl FastNLOFile {
                                 .collect();
                             return LowerOrderGrid {
                                 grid,
-                                norm: weight_info.as_ref().unwrap().norm,
+                                norm: weight_info.as_ref().unwrap().norm as Float,
                                 subprocess_map: map,
                             };
                         }
@@ -139,7 +139,7 @@ impl FastNLOFile {
                 },
             }
         }
-        unreachable!();
+        panic!("Unable to reconstruct scale dependence, no lower order grid present in table")
     }
 }
 

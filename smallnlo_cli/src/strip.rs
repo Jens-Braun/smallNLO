@@ -1,5 +1,5 @@
+use crate::util::read_table;
 use color_eyre::{Result, eyre::Context};
-use smallnlo::table::FastNLOFile;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -17,12 +17,15 @@ pub(crate) struct StripArgs {
     #[arg(short = 'l', long, default_value_t = 10)]
     /// zstd compression level to use
     compression_level: i32,
+    #[arg(short, long)]
+    /// Force the given scale format, completely purging all grids only present for `scale_format` > `force_scale_format`
+    force_scale_format: Option<usize>,
 }
 
 pub(crate) fn strip(args: &StripArgs) -> Result<()> {
-    let mut tab = FastNLOFile::read(&args.file)
-        .wrap_err_with(|| format!("Error while reading fastNLO table {:?}", args.file.clone()))?;
-    tab.strip();
+    let mut tab =
+        read_table(&args.file).wrap_err_with(|| format!("Error while reading input table {:?}", args.file.clone()))?;
+    tab.strip(args.force_scale_format);
     crate::util::write_snlo(&tab, &args.outfile, args.compress, args.compression_level)
         .wrap_err("Error while writing output file")?;
     return Ok(());

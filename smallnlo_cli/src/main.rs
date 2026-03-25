@@ -1,14 +1,16 @@
-use clap::{Parser, Subcommand, ValueEnum, builder::styling};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum, builder::styling};
 use color_eyre::Result;
 use tracing_subscriber::{
     filter::LevelFilter,
     fmt::{self, format::FmtSpan},
     prelude::*,
 };
+mod autocomplete;
 mod convert;
 mod merge;
 mod reconstruct;
 mod strip;
+mod summary;
 mod util;
 mod xsec;
 
@@ -38,11 +40,14 @@ enum Command {
     XSec(xsec::XSecArgs),
     /// Convert FastNLO <-> SmallNLO tables
     Convert(convert::ConvertArgs),
-    /// Merge FastNLO/SmallNLO tables into a single SmallNLO table.
-    /// Currently, this only adds the grids of multiple tables
+    /// Merge FastNLO/SmallNLO tables into a single SmallNLO table by summing the grids
     Merge(merge::MergeArgs),
     /// Reconstruct previously stripped scale dependence grids
     Reconstruct(reconstruct::RecoArgs),
+    /// Summarize the content of the input table
+    Summary(summary::SummaryArgs),
+    /// Generate shell autocompletion
+    Autocompletion(autocomplete::AutocompleteArgs),
 }
 
 #[derive(ValueEnum, Clone)]
@@ -74,5 +79,7 @@ fn main() -> Result<()> {
         Command::Convert(args) => convert::convert(args),
         Command::Merge(args) => merge::merge(args),
         Command::Reconstruct(args) => reconstruct::reconstruct(args),
+        Command::Summary(args) => summary::summary(args),
+        Command::Autocompletion(args) => autocomplete::autocomplete(&mut CliConfig::command(), args),
     };
 }
