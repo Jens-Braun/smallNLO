@@ -213,7 +213,26 @@ pub fn summary(args: &SummaryArgs) -> Result<()> {
                         }
                         println!("Present grids:              [{}]", grids.join(", "));
                     }
-                    _ => todo!(),
+                    smallnlo::table::Grid::Fixed {
+                        n_scale_var,
+                        n_scale_node,
+                        grid,
+                        ..
+                    } => {
+                        println!(
+                            "Number of scale variations per dimension:   {}",
+                            format!("{:?}", n_scale_var).red()
+                        );
+                        println!(
+                            "Number of scale nodes per dimension:   {}",
+                            format!("{:?}", n_scale_node).red()
+                        );
+                        println!("Number of entries per grid: {}", grid.len().red());
+                        println!(
+                            "First non-zero grid entry:   {:E}",
+                            grid.iter().find(|x| **x != 0.).unwrap_or(&0.).red()
+                        );
+                    }
                 }
             }
             _ => todo!(),

@@ -133,7 +133,7 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
         let mult_block = take::<usize>(lines)? == 1;
         let contribution_type = take::<usize>(lines)?;
         let contribution_order = take::<usize>(lines)?;
-        let scale_format = take::<usize>(lines)?;
+        let mut scale_format = take::<usize>(lines)?;
         let description = take_multiple::<String>(lines, None)?;
         let code_description = take_multiple::<String>(lines, None)?;
 
@@ -145,7 +145,11 @@ pub(crate) fn read_fastnlo_str(content: &str) -> Result<FastNLOFile, ReadError> 
             read_mult_block(lines.by_ref(), n_bins)?
         } else {
             tracing::info!("Reading data of block {b} (theory block): \n        {description:?}");
-            read_theory_block(lines.by_ref(), n_bins, scale_format)?
+            let (strip_rr, res) = read_theory_block(lines.by_ref(), n_bins, scale_format, alphas_ord)?;
+            if strip_rr {
+                scale_format -= 1;
+            }
+            res
         };
         let mut coeff_info_flags_1;
         let mut coeff_info_flags_2;
@@ -281,7 +285,8 @@ fn read_theory_block<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     n_bins: usize,
     scale_dependence: usize,
-) -> Result<BlockData, ReadError> {
+    alphas_ord: usize,
+) -> Result<(bool, BlockData), ReadError> {
     let reference_table = take::<usize>(lines)? == 1;
     let i_scale_dependence = take::<usize>(lines)?;
     let n_events_int = take::<isize>(lines)?;
@@ -306,16 +311,22 @@ fn read_theory_block<'a>(
             sum_weights_sq,
             sum_sig_sq,
             sum_sig,
-            weight_sq_obs,
-            sig_sq_obs,
-            sig_obs,
-            n_events_obs,
+            weight_sq_obs: to_padded_array2(weight_sq_obs),
+            sig_sq_obs: to_padded_array2(sig_sq_obs),
+            sig_obs: to_padded_array2(sig_obs),
+            n_events_obs: to_padded_array2(n_events_obs),
         });
         tracing::info!("Found full weight info with normalization `{norm}` and {n_entries} entries");
     } else {
         weight_info = None;
     }
     let alphas_power = take::<usize>(lines)?;
+    let nnlo = alphas_power - alphas_ord == 2;
+    let mut strip_rr = false;
+    if !nnlo && scale_dependence >= 6 {
+        tracing::warn!("Found spurious RR grid in NLO block, stripping.");
+        strip_rr = true;
+    }
     let pdf_info = read_pdf_info(lines)?;
 
     // The following is mentioned in the table format specification, but not in the fastnlotktoolkit
@@ -353,6 +364,7 @@ fn read_theory_block<'a>(
             n_events_int as f64
         },
         scale_dependence,
+        nnlo,
         n_bins,
         n_scale_dim,
         pdf_info.n_subproc,
@@ -360,21 +372,24 @@ fn read_theory_block<'a>(
         &x1_nodes,
         &x2_nodes,
     )?;
-    return Ok(BlockData::TheoryBlock {
-        reference_table,
-        i_scale_dependence,
-        n_events: n_events_int,
-        weight_info,
-        alphas_power,
-        pdf_info,
-        //n_events_bins,
-        x1_nodes,
-        x2_nodes,
-        z_nodes,
-        scale_dimension,
-        scale_description,
-        grid,
-    });
+    return Ok((
+        strip_rr,
+        BlockData::TheoryBlock {
+            reference_table,
+            i_scale_dependence,
+            n_events: n_events_int,
+            weight_info,
+            alphas_power,
+            pdf_info,
+            //n_events_bins,
+            x1_nodes,
+            x2_nodes,
+            z_nodes,
+            scale_dimension,
+            scale_description,
+            grid,
+        },
+    ));
 }
 
 #[inline]
@@ -431,6 +446,7 @@ fn read_grid<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
     norm: f64,
     scale_dependence: usize,
+    nnlo: bool,
     n_bins: usize,
     n_scale_dim: usize,
     n_subproc: usize,
@@ -478,15 +494,14 @@ fn read_grid<'a>(
             _ => unreachable!(),
         };
         let nxmax = *nxmax_vec.iter().max().unwrap();
-        let mut grid = Array6::zeros((n_bins, n_scale_dim, n_var_max, n_node_max, nxmax, n_subproc));
+        let total_scale_vars = n_scale_var.iter().product::<usize>();
+        let mut grid = Array5::zeros((n_bins, total_scale_vars, n_node_max, nxmax, n_subproc));
         for i in 0..n_bins {
-            for j in 0..n_scale_dim {
-                for k in 0..n_scale_var[j] {
-                    for l in 0..n_scale_node[j] {
-                        for m in 0..nxmax_vec[i] {
-                            for n in 0..n_subproc {
-                                grid[[i, j, k, l, m, n]] = take::<Float>(lines)?;
-                            }
+            for k in 0..total_scale_vars {
+                for l in 0..n_scale_node[0] {
+                    for m in 0..nxmax_vec[i] {
+                        for n in 0..n_subproc {
+                            grid[[i, k, l, m, n]] = (norm as Float) * take::<Float>(lines)?;
                         }
                     }
                 }
@@ -564,6 +579,9 @@ fn read_grid<'a>(
             if scale_dependence >= 6 {
                 grid_rr = Some(Array5::zeros(grid_shape));
                 fill_grid(lines, grid_rr.as_mut().unwrap().view_mut(), n_subproc, norm)?;
+                if !nnlo {
+                    grid_rr = None;
+                }
                 if scale_dependence >= 7 {
                     grid_ff = Some(Array5::zeros(grid_shape));
                     grid_rf = Some(Array5::zeros(grid_shape));
@@ -707,4 +725,17 @@ where
         res.push(take_multiple::<T>(lines, Some(m))?);
     }
     return Ok(res);
+}
+
+#[inline]
+fn to_padded_array2<T: Default + Clone>(data: Vec<Vec<T>>) -> Array2<T> {
+    let n = data.len();
+    let m = data.iter().map(|v| v.len()).max().unwrap_or(0);
+    return Array2::from_shape_fn((n, m), |(i, j)| {
+        if j < data[i].len() {
+            data[i][j].clone()
+        } else {
+            T::default()
+        }
+    });
 }

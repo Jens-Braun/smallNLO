@@ -1,11 +1,9 @@
-use color_eyre::{Result, eyre::Context};
-use flate2::bufread::GzEncoder;
-use std::io::Read;
+use color_eyre::Result;
 use std::path::PathBuf;
 
 use clap::Args;
 
-use crate::util::FileFormat;
+use crate::util::{self, FileFormat};
 
 #[derive(Args)]
 pub(crate) struct ConvertArgs {
@@ -26,34 +24,21 @@ pub(crate) struct ConvertArgs {
 }
 
 pub(crate) fn convert(args: &ConvertArgs) -> Result<()> {
-    let format = FileFormat::probe_file(&args.file)?;
+    let format_in = FileFormat::probe_file(&args.file)?;
     let mut tab = crate::util::read_table(&args.file)?;
-    match format {
-        FileFormat::SmallNLO | FileFormat::CompressedSmallNLO => {
-            if args.compress {
-                let mut buf = String::new();
-                tab.write(&mut buf)?;
-                let mut gz = GzEncoder::new(buf.as_bytes(), flate2::Compression::best());
-                let mut out = args.outfile.clone();
-                out.add_extension("gz");
-                let mut byte_buf = Vec::new();
-                gz.read_to_end(&mut byte_buf)?;
-                std::fs::write(out, &byte_buf)?;
-            } else {
-                tab.write_file(&args.outfile)?;
-            }
-        }
-        FileFormat::CompressedFastNLO | FileFormat::FastNLO => {
-            tracing::debug!("Input table is FastNLO, exporting SmallNLO");
-            if args.strip {
-                tracing::debug!("Stripping scale dependence grids");
-                tab.strip(None);
-            }
-            let mut out_path = args.outfile.clone();
-            out_path.set_extension("snlo");
-            crate::util::write_snlo(&tab, &out_path, args.compress, args.compression_level)
-                .wrap_err("Error while writing output file")?;
-        }
+    if args.strip {
+        tab.strip(None);
     }
+    let format = if args.outfile.extension().is_none() {
+        match format_in {
+            FileFormat::SmallNLO => FileFormat::FastNLO,
+            FileFormat::FastNLO => FileFormat::SmallNLO,
+            FileFormat::CompressedSmallNLO => FileFormat::CompressedFastNLO,
+            FileFormat::CompressedFastNLO => FileFormat::CompressedSmallNLO,
+        }
+    } else {
+        FileFormat::probe_path(&args.outfile, args.compress)
+    };
+    util::write_table(&tab, &args.outfile, format, args.compression_level)?;
     return Ok(());
 }

@@ -26,17 +26,32 @@ pub(crate) struct XSecArgs {
     #[arg(short, long, default_value = None)]
     order: Option<usize>,
     #[arg(short, long)]
-    /// Fixed scale to evaluate the table at
+    /// Fixed scale factor to evaluate the table at
     scale: Option<f64>,
+    #[arg(short, long)]
+    /// Fixed absolute scale to evaluate the table at
+    absolute_scale: Option<f64>,
 }
 
 pub fn print_cross_section_table(args: &XSecArgs) -> Result<()> {
-    let (bins, xsec) = cross_section(&args.file, &args.pdf, args.order.clone(), args.scale.clone())?;
+    let (bins, xsec) = cross_section(
+        &args.file,
+        &args.pdf,
+        args.order.clone(),
+        args.scale.clone(),
+        args.absolute_scale.clone(),
+    )?;
     let xsec_compare = if let Some(file2) = &args.compare {
         Some(
-            cross_section(file2, &args.pdf, args.order.clone(), args.scale.clone())
-                .wrap_err("Error while calculating cross sections of comparison file")?
-                .1,
+            cross_section(
+                file2,
+                &args.pdf,
+                args.order.clone(),
+                args.scale.clone(),
+                args.absolute_scale.clone(),
+            )
+            .wrap_err("Error while calculating cross sections of comparison file")?
+            .1,
         )
     } else {
         None
@@ -114,11 +129,16 @@ fn cross_section(
     pdf: &str,
     order: Option<usize>,
     scale: Option<f64>,
+    absolute_scale: Option<f64>,
 ) -> Result<(Vec<(f64, f64)>, Array1<Float>)> {
     let tab = crate::util::read_table(path).wrap_err("Error while reading input table")?;
     let mu = if let Some(s) = scale {
         Some(Box::new(
             Arc::new(move |s1, _| s * s1) as Arc<dyn Fn(f64, f64) -> f64 + Send + Sync>
+        ))
+    } else if let Some(s) = absolute_scale {
+        Some(Box::new(
+            Arc::new(move |_, _| s) as Arc<dyn Fn(f64, f64) -> f64 + Send + Sync>
         ))
     } else {
         None

@@ -1,4 +1,4 @@
-use ndarray::Array5;
+use ndarray::prelude::*;
 
 use crate::Float;
 use crate::error::WriteError;
@@ -204,10 +204,10 @@ fn write_theory_block(w: &mut impl Write, b: &BlockData) -> Result<(), WriteErro
                 w_literal(w, weight_info.sum_weights_sq)?;
                 w_literal(w, weight_info.sum_sig_sq)?;
                 w_literal(w, weight_info.sum_sig)?;
-                w_nested_vec(w, &weight_info.weight_sq_obs)?;
-                w_nested_vec(w, &weight_info.sig_sq_obs)?;
-                w_nested_vec(w, &weight_info.sig_obs)?;
-                w_nested_vec(w, &weight_info.n_events_obs)?;
+                w_indexed_array(w, &weight_info.weight_sq_obs)?;
+                w_indexed_array(w, &weight_info.sig_sq_obs)?;
+                w_indexed_array(w, &weight_info.sig_obs)?;
+                w_indexed_array(w, &weight_info.n_events_obs)?;
             }
             w_literal(w, alphas_power)?;
             write_pdf_info(w, pdf_info)?;
@@ -380,11 +380,21 @@ fn w_iter<T: std::fmt::Display>(w: &mut impl Write, x: impl IntoIterator<Item = 
     return Ok(());
 }
 
+#[allow(dead_code)]
 #[inline]
 fn w_nested_vec<T: std::fmt::Display>(w: &mut impl Write, x: &Vec<Vec<T>>) -> Result<(), WriteError> {
     w_literal(w, x.len())?;
     for y in x {
         w_slice(w, y)?;
+    }
+    return Ok(());
+}
+
+#[inline]
+fn w_indexed_array<T: std::fmt::Display>(w: &mut impl Write, x: &Array2<T>) -> Result<(), WriteError> {
+    w_literal(w, x.dim().0)?;
+    for row in x.rows() {
+        w_slice(w, row.as_slice().unwrap())?;
     }
     return Ok(());
 }

@@ -56,8 +56,29 @@ impl FastNLOEvalutator<'_, '_> {
                     {
                         continue;
                     }
+                    let unit = (10.0 as Float).powi((self.file.metadata.unit as i32) - (block.unit as i32));
+                    let normalization = unit / weight_info.as_ref().unwrap().norm as Float;
+                    let p = *alphas_power as Float;
+                    let n = *alphas_power - self.file.metadata.alphas_ord;
                     match grid {
-                        Grid::Fixed { .. } => todo!(),
+                        Grid::Fixed {
+                            grid,
+                            n_scale_node,
+                            scale_node,
+                            ..
+                        } => {
+                            let pdf = self.file.build_fix_pdf_grid(block, &hp);
+                            for (i, xs) in xsec.iter_mut().enumerate() {
+                                let alphas = Array1::from_shape_fn(n_scale_node[0], |j| {
+                                    (hp.alphaS(scale_node[[i, 0, 0, j]]) as Float * FRAC_1_TWOPI)
+                                        .powi(*alphas_power as i32)
+                                });
+                                *xs += normalization
+                                    * Zip::indexed(grid.index_axis(Axis(0), i).index_axis(Axis(0), 0))
+                                        .and(pdf.index_axis(Axis(0), i))
+                                        .fold(0., |acc, (j, _, _), sigma, pdflc| acc + sigma * alphas[[j]] * pdflc);
+                            }
+                        }
                         Grid::Flex {
                             scale_node_1,
                             scale_node_2,
@@ -69,11 +90,7 @@ impl FastNLOEvalutator<'_, '_> {
                             grid_rf,
                             ..
                         } => {
-                            let unit = (10.0 as Float).powi((self.file.metadata.unit as i32) - (block.unit as i32));
-                            let normalization = unit / weight_info.as_ref().unwrap().norm as Float;
-                            let p = *alphas_power as Float;
-                            let n = *alphas_power - self.file.metadata.alphas_ord;
-                            let pdf = self.file.build_pdf_grid(block, &hp, &self.mu_f_function, 0, 0);
+                            let pdf = self.file.build_flex_pdf_grid(block, &hp, &self.mu_f_function, 0, 0);
                             let mut pdfc_0_1 = None;
                             let mut pdfc_1_0 = None;
                             let mut pdfc_0_2 = None;
@@ -161,10 +178,20 @@ impl FastNLOEvalutator<'_, '_> {
                                     } else {
                                         tracing::info!("F piece not in table, reconstructing");
                                         if pdfc_0_1.is_none() || pdfc_1_0.is_none() {
-                                            pdfc_0_1 =
-                                                Some(self.file.build_pdf_grid(block, &hp, &self.mu_f_function, 0, 1));
-                                            pdfc_1_0 =
-                                                Some(self.file.build_pdf_grid(block, &hp, &self.mu_f_function, 1, 0));
+                                            pdfc_0_1 = Some(self.file.build_flex_pdf_grid(
+                                                block,
+                                                &hp,
+                                                &self.mu_f_function,
+                                                0,
+                                                1,
+                                            ));
+                                            pdfc_1_0 = Some(self.file.build_flex_pdf_grid(
+                                                block,
+                                                &hp,
+                                                &self.mu_f_function,
+                                                1,
+                                                0,
+                                            ));
                                         }
                                         let pdf_0_1 = pdfc_0_1.as_ref().unwrap();
                                         let pdf_1_0 = pdfc_1_0.as_ref().unwrap();
@@ -184,14 +211,14 @@ impl FastNLOEvalutator<'_, '_> {
                                         if n == 2 {
                                             // NNLO grid -> add LO pieces
                                             if pdfc_0_2.is_none() || pdfc_2_0.is_none() {
-                                                pdfc_0_2 = Some(self.file.build_pdf_grid(
+                                                pdfc_0_2 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
                                                     0,
                                                     2,
                                                 ));
-                                                pdfc_2_0 = Some(self.file.build_pdf_grid(
+                                                pdfc_2_0 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
@@ -263,14 +290,14 @@ impl FastNLOEvalutator<'_, '_> {
                                         } else {
                                             tracing::info!("FF or RF piece not in table, reconstructing");
                                             if pdfc_0_1.is_none() || pdfc_1_0.is_none() {
-                                                pdfc_0_1 = Some(self.file.build_pdf_grid(
+                                                pdfc_0_1 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
                                                     0,
                                                     1,
                                                 ));
-                                                pdfc_1_0 = Some(self.file.build_pdf_grid(
+                                                pdfc_1_0 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
@@ -279,21 +306,21 @@ impl FastNLOEvalutator<'_, '_> {
                                                 ));
                                             }
                                             if pdfc_0_11.is_none() || pdfc_11_0.is_none() || pdfc_1_1.is_none() {
-                                                pdfc_0_11 = Some(self.file.build_pdf_grid(
+                                                pdfc_0_11 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
                                                     0,
                                                     11,
                                                 ));
-                                                pdfc_11_0 = Some(self.file.build_pdf_grid(
+                                                pdfc_11_0 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,
                                                     11,
                                                     0,
                                                 ));
-                                                pdfc_1_1 = Some(self.file.build_pdf_grid(
+                                                pdfc_1_1 = Some(self.file.build_flex_pdf_grid(
                                                     block,
                                                     &hp,
                                                     &self.mu_f_function,

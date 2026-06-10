@@ -46,7 +46,7 @@ pub(crate) fn conv_xfx(
 }
 
 impl FastNLOFile {
-    pub(crate) fn build_pdf_grid(
+    pub(crate) fn build_flex_pdf_grid(
         &self,
         b: &Block,
         hp: &Hoppet,
@@ -96,7 +96,49 @@ impl FastNLOFile {
                     }
                     return pdf;
                 }
-                _ => todo!(),
+                _ => unreachable!(),
+            },
+            _ => todo!(),
+        }
+    }
+
+    pub(crate) fn build_fix_pdf_grid(&self, b: &Block, hp: &Hoppet) -> Array4<Float> {
+        match &b.data {
+            BlockData::TheoryBlock {
+                x1_nodes,
+                x2_nodes,
+                grid,
+                pdf_info,
+                ..
+            } => match grid {
+                Grid::Fixed { grid, scale_node, .. } => {
+                    let mut pdf = Array4::zeros((grid.dim().0, grid.dim().2, grid.dim().3, grid.dim().4));
+                    for i in 0..grid.dim().0 {
+                        let nxmax = match pdf_info.n_pdf_dim {
+                            0 => x1_nodes[i].len(),
+                            1 => x1_nodes[i].len() * (x1_nodes.len() + 1) / 2,
+                            2 => x1_nodes[i].len() * x2_nodes[i].len(),
+                            _ => unreachable!(),
+                        };
+                        for j in 0..scale_node.shape()[3] {
+                            let muf = scale_node[[i, 0, 0, j]];
+                            for k in 0..nxmax {
+                                crate::util::conv_xfx(
+                                    pdf_info,
+                                    &hp,
+                                    x1_nodes[i][k % x1_nodes[i].len()],
+                                    x2_nodes[i][k / x1_nodes[i].len()],
+                                    muf,
+                                    0,
+                                    0,
+                                    pdf.slice_mut(s![i, j, k, ..]).as_slice_mut().unwrap(),
+                                );
+                            }
+                        }
+                    }
+                    return pdf;
+                }
+                _ => unreachable!(),
             },
             _ => todo!(),
         }
@@ -139,7 +181,10 @@ impl FastNLOFile {
                 },
             }
         }
-        panic!("Unable to reconstruct scale dependence, no lower order grid present in table")
+        panic!(
+            "Unable to reconstruct scale dependence, no lower order grid present in table (required order in αₛ: {})",
+            ref_order - n
+        );
     }
 }
 

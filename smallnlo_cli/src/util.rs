@@ -2,8 +2,10 @@ use color_eyre::{
     Result,
     eyre::{Context, eyre},
 };
+use flate2::bufread::GzEncoder;
+use owo_colors::OwoColorize;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use bitcode;
 use flate2::bufread::GzDecoder;
@@ -37,6 +39,36 @@ impl FileFormat {
                 return Err(eyre!("Unable to identify input table as one of the supported formats"));
             }
         });
+    }
+
+    pub(crate) fn probe_path(path: &Path, compress: bool) -> Self {
+        match path.extension() {
+            None => FileFormat::CompressedSmallNLO,
+            Some(ext) => match ext.to_str().unwrap() {
+                "snlo" => {
+                    if compress {
+                        FileFormat::CompressedSmallNLO
+                    } else {
+                        FileFormat::SmallNLO
+                    }
+                }
+                "tab" => {
+                    if compress {
+                        FileFormat::CompressedFastNLO
+                    } else {
+                        FileFormat::FastNLO
+                    }
+                }
+                "gz" => FileFormat::CompressedFastNLO,
+                _ => {
+                    tracing::warn!(
+                        "Unknown file extension {}, defaulting to compressed smallNLO format",
+                        ext.to_str().unwrap().red()
+                    );
+                    FileFormat::CompressedFastNLO
+                }
+            },
+        }
     }
 }
 
@@ -103,4 +135,29 @@ pub(crate) fn read_table(path: &Path) -> Result<FastNLOFile> {
         }
     };
     return Ok(tab);
+}
+
+pub(crate) fn write_table(table: &FastNLOFile, path: &Path, format: FileFormat, level: i32) -> Result<()> {
+    let mut owned_path = PathBuf::from(path);
+    if path.extension().is_none() {
+        owned_path.add_extension("snlo");
+    }
+
+    match format {
+        FileFormat::SmallNLO => write_snlo(table, &owned_path, false, level)?,
+        FileFormat::CompressedSmallNLO => write_snlo(table, &owned_path, true, level)?,
+        FileFormat::FastNLO => table.write_file(&owned_path)?,
+        FileFormat::CompressedFastNLO => {
+            if owned_path.extension().unwrap().to_str().unwrap() != "gz" {
+                owned_path.add_extension("gz");
+            }
+            let mut buf = String::new();
+            table.write(&mut buf)?;
+            let mut gz = GzEncoder::new(buf.as_bytes(), flate2::Compression::best());
+            let mut byte_buf = Vec::new();
+            gz.read_to_end(&mut byte_buf)?;
+            std::fs::write(owned_path, &byte_buf)?;
+        }
+    }
+    Ok(())
 }

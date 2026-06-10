@@ -47,7 +47,7 @@ impl FastNLOFile {
                             // LO grid, nothing to do
                             continue;
                         }
-                        let pdf = self.build_pdf_grid(block, &hp, &mu_f, 0, 0);
+                        let pdf = self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 0);
                         let mut pdfc_0_1 = None;
                         let mut pdfc_1_0 = None;
                         let mut pdfc_0_2 = None;
@@ -79,8 +79,8 @@ impl FastNLOFile {
                         if grid_f.is_none() {
                             tracing::debug!("Reconstructing F grid");
                             if pdfc_0_1.is_none() || pdfc_1_0.is_none() {
-                                pdfc_0_1 = Some(self.build_pdf_grid(block, &hp, &mu_f, 0, 1));
-                                pdfc_1_0 = Some(self.build_pdf_grid(block, &hp, &mu_f, 1, 0));
+                                pdfc_0_1 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 1));
+                                pdfc_1_0 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 1, 0));
                             }
                             let pdf_0_1 = pdfc_0_1.as_ref().unwrap();
                             let pdf_1_0 = pdfc_1_0.as_ref().unwrap();
@@ -93,8 +93,8 @@ impl FastNLOFile {
                                 }
                                 2 => {
                                     if pdfc_0_2.is_none() || pdfc_2_0.is_none() {
-                                        pdfc_0_2 = Some(self.build_pdf_grid(block, &hp, &mu_f, 0, 2));
-                                        pdfc_2_0 = Some(self.build_pdf_grid(block, &hp, &mu_f, 2, 0));
+                                        pdfc_0_2 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 2));
+                                        pdfc_2_0 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 2, 0));
                                     }
                                     let pdf_0_2 = pdfc_0_2.as_ref().unwrap();
                                     let pdf_2_0 = pdfc_2_0.as_ref().unwrap();
@@ -130,13 +130,13 @@ impl FastNLOFile {
                         if grid_ff.is_none() {
                             tracing::debug!("Reconstructing FF grid");
                             if pdfc_0_1.is_none() || pdfc_1_0.is_none() {
-                                pdfc_0_1 = Some(self.build_pdf_grid(block, &hp, &mu_f, 0, 1));
-                                pdfc_1_0 = Some(self.build_pdf_grid(block, &hp, &mu_f, 1, 0));
+                                pdfc_0_1 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 1));
+                                pdfc_1_0 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 1, 0));
                             }
                             if pdfc_0_11.is_none() || pdfc_11_0.is_none() || pdfc_1_1.is_none() {
-                                pdfc_0_11 = Some(self.build_pdf_grid(block, &hp, &mu_f, 0, 11));
-                                pdfc_11_0 = Some(self.build_pdf_grid(block, &hp, &mu_f, 11, 0));
-                                pdfc_1_1 = Some(self.build_pdf_grid(block, &hp, &mu_f, 1, 1));
+                                pdfc_0_11 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 11));
+                                pdfc_11_0 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 11, 0));
+                                pdfc_1_1 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 1, 1));
                             }
                             let pdf_0_1 = pdfc_0_1.as_ref().unwrap();
                             let pdf_1_0 = pdfc_1_0.as_ref().unwrap();
@@ -154,8 +154,8 @@ impl FastNLOFile {
                         if grid_rf.is_none() {
                             tracing::debug!("Reconstructing RF grid");
                             if pdfc_0_1.is_none() || pdfc_1_0.is_none() {
-                                pdfc_0_1 = Some(self.build_pdf_grid(block, &hp, &mu_f, 0, 1));
-                                pdfc_1_0 = Some(self.build_pdf_grid(block, &hp, &mu_f, 1, 0));
+                                pdfc_0_1 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 0, 1));
+                                pdfc_1_0 = Some(self.build_flex_pdf_grid(block, &hp, &mu_f, 1, 0));
                             }
                             let pdf_0_1 = pdfc_0_1.as_ref().unwrap();
                             let pdf_1_0 = pdfc_1_0.as_ref().unwrap();

@@ -40,6 +40,13 @@ impl FastNLOFile {
     pub fn write(&self, w: &mut impl Write) -> Result<(), WriteError> {
         return write_fastnlo(w, self);
     }
+
+    pub fn set_merge_weights(&mut self, weights: &[f64]) {
+        assert!(weights.len() == self.bin_info.bins.len());
+        for b in &mut self.blocks {
+            b.set_merge_weights(weights);
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -92,6 +99,22 @@ pub struct Block {
     pub coeff_block_content: Vec<Vec<f64>>,        // CoeffInfoBlockContent
 }
 
+impl Block {
+    pub fn set_merge_weights(&mut self, weights: &[f64]) {
+        match &mut self.data {
+            BlockData::TheoryBlock {
+                weight_info, pdf_info, ..
+            } => {
+                if let Some(wi) = weight_info.as_mut() {
+                    let w = Array2::from_shape_fn((pdf_info.n_subproc, weights.len()), |(_, i)| weights[i]);
+                    wi.sig_obs = w;
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum BlockData {
     DataBlock {
@@ -134,17 +157,17 @@ pub enum BlockData {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct WeightInfo {
-    pub n_events: f64,                 // NEvt
-    pub norm: f64,                     // WgtNevt
-    pub n_tables: usize,               // NumTable
-    pub n_entries: usize,              // WgtNumEv
-    pub sum_weights_sq: f64,           // WgtSumW2
-    pub sum_sig_sq: f64,               // SigSumW2
-    pub sum_sig: f64,                  // SigSum
-    pub weight_sq_obs: Vec<Vec<f64>>,  // WgtObsSumW2
-    pub sig_sq_obs: Vec<Vec<f64>>,     // SigObsSumW2
-    pub sig_obs: Vec<Vec<f64>>,        // SigObsSum
-    pub n_events_obs: Vec<Vec<usize>>, // WgtObsNumEv
+    pub n_events: f64,               // NEvt
+    pub norm: f64,                   // WgtNevt
+    pub n_tables: usize,             // NumTable
+    pub n_entries: usize,            // WgtNumEv
+    pub sum_weights_sq: f64,         // WgtSumW2
+    pub sum_sig_sq: f64,             // SigSumW2
+    pub sum_sig: f64,                // SigSum
+    pub weight_sq_obs: Array2<f64>,  // WgtObsSumW2
+    pub sig_sq_obs: Array2<f64>,     // SigObsSumW2
+    pub sig_obs: Array2<f64>,        // SigObsSum
+    pub n_events_obs: Array2<usize>, // WgtObsNumEv
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -167,7 +190,7 @@ pub enum Grid {
         n_scale_node: Vec<usize>,  // Nscalenode
         scale_fac: Array2<Float>,  // ScaleFac
         scale_node: Array4<Float>, // ScaleNode
-        grid: Array6<Float>,       // SigmaTilde
+        grid: Array5<Float>,       // SigmaTilde
     },
     Flex {
         scale_node_1: Array2<Float>,    // ScaleNode1
@@ -182,6 +205,60 @@ pub enum Grid {
         sigma_ref_s1: Array2<Float>,    // SigmaRefMixed (undocumented)
         sigma_ref_s2: Array2<Float>,    // SigmaRefMixed (undocumented)
     },
+}
+
+impl Grid {
+    pub(crate) fn grids<'s>(&'s self) -> impl Iterator<Item = ArrayView5<'s, Float>> {
+        match self {
+            Self::Fixed { grid, .. } => {
+                return vec![Some(grid.view())].into_iter().flatten();
+            }
+            Self::Flex {
+                grid,
+                grid_f,
+                grid_r,
+                grid_rr,
+                grid_ff,
+                grid_rf,
+                ..
+            } => vec![
+                Some(grid.view()),
+                grid_f.as_ref().map(|g| g.view()),
+                grid_r.as_ref().map(|g| g.view()),
+                grid_rr.as_ref().map(|g| g.view()),
+                grid_ff.as_ref().map(|g| g.view()),
+                grid_rf.as_ref().map(|g| g.view()),
+            ]
+            .into_iter()
+            .flatten(),
+        }
+    }
+
+    pub(crate) fn grids_mut<'s>(&'s mut self) -> impl Iterator<Item = ArrayViewMut5<'s, Float>> {
+        match self {
+            Self::Fixed { grid, .. } => {
+                return vec![Some(grid.view_mut())].into_iter().flatten();
+            }
+            Self::Flex {
+                grid,
+                grid_f,
+                grid_r,
+                grid_rr,
+                grid_ff,
+                grid_rf,
+                ..
+            } => vec![
+                Some(grid.view_mut()),
+                grid_f.as_mut().map(|g| g.view_mut()),
+                grid_r.as_mut().map(|g| g.view_mut()),
+                grid_rr.as_mut().map(|g| g.view_mut()),
+                grid_ff.as_mut().map(|g| g.view_mut()),
+                grid_rf.as_mut().map(|g| g.view_mut()),
+            ]
+            .into_iter()
+            .flatten(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
