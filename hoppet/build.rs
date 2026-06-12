@@ -13,23 +13,11 @@ fn main() {
             .parse::<usize>()
             .unwrap();
         if version == 2 {
-            let link_paths = String::from_utf8(
-                Command::new("hoppet-config")
-                    .arg("--version")
-                    .output()
-                    .unwrap()
-                    .stdout,
-            )
-            .unwrap()
-            .split_whitespace()
-            .filter_map(|s| {
-                if s.starts_with("-L") {
-                    Some(s[2..].into())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<PathBuf>>();
+            let link_paths = String::from_utf8(Command::new("hoppet-config").arg("--libs").output().unwrap().stdout)
+                .unwrap()
+                .split_whitespace()
+                .filter_map(|s| if s.starts_with("-L") { Some(s[2..].into()) } else { None })
+                .collect::<Vec<PathBuf>>();
             for path in link_paths {
                 println!("cargo:rustc-link-search=native={}", path.display());
             }
@@ -46,17 +34,12 @@ fn main() {
             .define("HOPPET_BUILD_EXAMPLES", "OFF")
             .define("HOPPET_ENABLE_TESTING", "OFF")
             .define("HOPPET_BUILD_BENCHMARK", "OFF")
-            .env("CMAKE_Fortran_FLAGS", "-frecursive -fcheck=no-recursive")
+            .env("CMAKE_Fortran_FLAGS", "-frecursive -fcheck=no-recursive -fPIC")
+            .env("CMAKE_Fortran_FLAGS_RELEASE", "-frecursive -fcheck=no-recursive -fPIC")
             .profile("Release")
             .build();
-        println!(
-            "cargo:rustc-link-search=native={}",
-            hoppet.join("lib").display()
-        );
-        println!(
-            "cargo:rustc-link-search=native={}",
-            hoppet.join("lib64").display()
-        );
+        println!("cargo:rustc-link-search=native={}", hoppet.join("lib").display());
+        println!("cargo:rustc-link-search=native={}", hoppet.join("lib64").display());
     }
 
     println!("cargo:rustc-link-lib=static=hoppet");
